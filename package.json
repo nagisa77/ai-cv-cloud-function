@@ -2,6 +2,8 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.21.2",
-    "redis": "^3.1.2"
+    "jsonwebtoken": "^9.0.2",
+    "redis": "^3.1.2",
+    "resend": "^4.1.2"
   }
 }

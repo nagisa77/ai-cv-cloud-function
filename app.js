@@ -1,3 +1,6 @@
+globalThis.Headers = require('node-fetch').Headers;
+globalThis.fetch = require('node-fetch');
+
 const express = require('express');
 const cors = require('cors');
 const app = express();
@@ -9,7 +12,13 @@ const authRoutes = require('./routes/auth');      // 登录模块
 // ---------- 中间件配置 ----------
 // 配置 CORS（根据你的前端地址调整）
 app.use(cors({
-  origin: 'http://localhost:8080',
+  origin: [
+    'http://localhost:8080', 
+    'http://chenjiating.com',
+    'http://www.chenjiating.com',
+    'https://chenjiating.com',
+    'https://www.chenjiating.com',
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));

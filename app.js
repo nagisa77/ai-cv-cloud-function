@@ -12,6 +12,7 @@ const app = express();
 // ---------- 引入自定义模块 ----------
 const userRoutes = require('./routes/user');      // 用户数据模块
 const authRoutes = require('./routes/auth');      // 登录模块
+const picRoutes = require('./routes/pic');      // 图片上传模块
 
 // ---------- 中间件配置 ----------
 // 配置 CORS（根据你的前端地址调整）
@@ -33,6 +34,7 @@ app.use(express.json());
 // ---------- 路由挂载 ----------
 app.use('/user', userRoutes);
 app.use('/auth', authRoutes);
+app.use('/pic', picRoutes);
 
 // ---------- 全局错误处理 ----------
 app.use((err, req, res, next) => {

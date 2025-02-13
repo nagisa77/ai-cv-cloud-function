@@ -19,7 +19,7 @@ const router = express.Router();
 const client = require('../utils/redis');
 const { Resend } = require('resend');
 const jwt = require('jsonwebtoken');
-const resend = new Resend('re_A27wEAZE_EZKyz6jE598sMs9UiQ217yaF');
+const resend = new Resend(process.env.RESEND_API_KEY);
 const secretKey = require('crypto').randomBytes(64).toString('hex');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

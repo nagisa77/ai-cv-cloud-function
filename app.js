@@ -1,3 +1,7 @@
+const dotenv = require('dotenv');
+// 配置环境变量
+dotenv.config();
+
 const express = require('express');
 const cors = require('cors');
 const app = express();

@@ -1,13 +1,13 @@
 const redis = require('redis');
 
 const client = redis.createClient({
-  host: '23.159.248.46',
-  port: 6379,
-  password: 'qq1216414009'
+    host: process.env.REDIS_HOST,
+    port: parseInt(process.env.REDIS_PORT),
+    password: process.env.REDIS_PASSWORD
 });
 
 client.on('error', (err) => {
-  console.error('Redis Error:', err);
+    console.error('Redis Error:', err);
 });
 
 client.on('connect', () => {

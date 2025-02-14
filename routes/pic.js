@@ -1,3 +1,10 @@
+// pic.js
+/*
+curl -i -X POST http://localhost:9000/pic \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb250YWN0IjoiY2p0ODA3OTE2QGdtYWlsLmNvbSIsImlhdCI6MTczOTUyMTk2NSwiZXhwIjoxNzM5NTI1NTY1fQ.jB3lBRMVr4Wc1MUWYQP74IWRLQz4CD3aCKoxzK1Gctw" \
+  -F "image=@/Users/tim/Downloads/example.png"
+
+*/
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');

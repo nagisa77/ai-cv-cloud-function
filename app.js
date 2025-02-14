@@ -31,9 +31,45 @@ app.use(cors({
 // 解析 JSON 请求体
 app.use(express.json());
 
+// ---------- 新增JWT鉴权中间件 ----------
+const jwt = require('jsonwebtoken');
+const secretKey = process.env.JWT_SECRET
+
+const authMiddleware = (req, res, next) => {
+    // 排除 OPTIONS 预检请求
+    if (req.method === 'OPTIONS') return next();
+    
+    // 排除 auth 相关路由
+    if (req.path.startsWith('/auth')) return next();
+
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({
+            code: 40101,
+            message: '未提供认证令牌'
+        });
+    }
+
+    const token = authHeader.split(' ')[1];
+    jwt.verify(token, secretKey, (err, decoded) => {
+        if (err) {
+            console.error('[JWT Error]', err);
+            return res.status(401).json({
+                code: 40102,
+                message: '无效或过期的令牌'
+            });
+        }
+        req.user = decoded;
+        next();
+    });
+};
+
 // ---------- 路由挂载 ----------
-app.use('/user', userRoutes);
 app.use('/auth', authRoutes);
+
+// 应用鉴权中间件（影响后续所有路由）
+app.use(authMiddleware);
+app.use('/user', userRoutes);
 app.use('/pic', picRoutes);
 
 // ---------- 全局错误处理 ----------

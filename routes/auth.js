@@ -1,3 +1,5 @@
+// auth.js 
+
 /*
 > 发送验证码
 curl -X POST http://localhost:9000/auth/captcha/send \
@@ -11,7 +13,7 @@ curl -X POST http://localhost:9000/auth/captcha/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "cjt807916@gmail.com",
-    "captcha": "894960"
+    "captcha": "323396"
   }'
 */
 const express = require('express');
@@ -22,7 +24,7 @@ const jwt = require('jsonwebtoken');
 const resend = new Resend(process.env.RESEND_API_KEY, {
     fetch: require('node-fetch')
 });
-const secretKey = require('crypto').randomBytes(64).toString('hex');
+const secretKey = process.env.JWT_SECRET
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^1[3-9]\d{9}$/;

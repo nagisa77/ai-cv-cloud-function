@@ -29,6 +29,8 @@ const secretKey = process.env.JWT_SECRET
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_REGEX = /^1[3-9]\d{9}$/;
 
+console.log('Login SecretKey:', secretKey);
+
 function generateCaptcha() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }

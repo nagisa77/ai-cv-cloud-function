@@ -1,3 +1,4 @@
+// app.js
 globalThis.Headers = require('node-fetch').Headers;
 globalThis.fetch = require('node-fetch');
 
@@ -25,7 +26,9 @@ app.use(cors({
     'https://www.chenjiating.com',
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  credentials: true, 
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  exposedHeaders: ['Authorization'],
 }));
 
 // 解析 JSON 请求体
@@ -35,15 +38,26 @@ app.use(express.json());
 const jwt = require('jsonwebtoken');
 const secretKey = process.env.JWT_SECRET
 
+console.log('Middleware SecretKey:', secretKey);
+
 const authMiddleware = (req, res, next) => {
+    console.log(`[Auth Middleware] 请求方法: ${req.method}, 请求路径: ${req.path}`);
+
     // 排除 OPTIONS 预检请求
-    if (req.method === 'OPTIONS') return next();
+    if (req.method === 'OPTIONS') {
+        console.log('[Auth Middleware] OPTIONS 请求，跳过鉴权');
+        return next();
+    }
     
     // 排除 auth 相关路由
-    if (req.path.startsWith('/auth')) return next();
+    if (req.path.startsWith('/auth')) {
+        console.log('[Auth Middleware] Auth 路由，跳过鉴权');
+        return next();
+    }
 
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        console.warn('[Auth Middleware] 未提供认证令牌');
         return res.status(401).json({
             code: 40101,
             message: '未提供认证令牌'
@@ -51,6 +65,7 @@ const authMiddleware = (req, res, next) => {
     }
 
     const token = authHeader.split(' ')[1];
+    console.log(`[Auth Middleware] 验证令牌: ${token}`);
     jwt.verify(token, secretKey, (err, decoded) => {
         if (err) {
             console.error('[JWT Error]', err);
@@ -59,6 +74,7 @@ const authMiddleware = (req, res, next) => {
                 message: '无效或过期的令牌'
             });
         }
+        console.log('[Auth Middleware] 令牌验证成功，用户信息:', decoded);
         req.user = decoded;
         next();
     });

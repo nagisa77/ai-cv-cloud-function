@@ -1,4 +1,3 @@
-// user.js
 const express = require('express');
 const router = express.Router();
 const client = require('../utils/redis');
@@ -11,7 +10,7 @@ const client = require('../utils/redis');
 // 获取用户的元数据
 router.get('/:user_id/meta_data', (req, res) => {
     const userId = req.params.user_id;
-    client.hget(`${userId}`, 'meta_data', (err, data) => {
+    client.hget(`user_data:${userId}`, 'meta_data', (err, data) => { 
         if (err) return res.status(500).send('Error retrieving meta_data');
         if (!data) return res.status(404).send('Meta_data not found');
         try {
@@ -27,7 +26,7 @@ router.get('/:user_id/meta_data', (req, res) => {
 router.post('/:user_id/meta_data', (req, res) => {
     const userId = req.params.user_id;
     const metaData = req.body;
-    client.hset(`${userId}`, 'meta_data', JSON.stringify(metaData), (err, reply) => {
+    client.hset(`user_data:${userId}`, 'meta_data', JSON.stringify(metaData), (err, reply) => { 
         if (err) return res.status(500).send('Error saving meta_data');
         res.status(200).send({ message: 'Meta_data created successfully' });
     });
@@ -37,7 +36,7 @@ router.post('/:user_id/meta_data', (req, res) => {
 router.put('/:user_id/meta_data', (req, res) => {
     const userId = req.params.user_id;
     const metaData = req.body;
-    client.hset(`${userId}`, 'meta_data', JSON.stringify(metaData), (err, reply) => {
+    client.hset(`user_data:${userId}`, 'meta_data', JSON.stringify(metaData), (err, reply) => { 
         if (err) return res.status(500).send('Error updating meta_data');
         res.status(200).send({ message: 'Meta_data updated successfully' });
     });
@@ -46,7 +45,7 @@ router.put('/:user_id/meta_data', (req, res) => {
 // 删除元数据
 router.delete('/:user_id/meta_data', (req, res) => {
     const userId = req.params.user_id;
-    client.hdel(`${userId}`, 'meta_data', (err, reply) => {
+    client.hdel(`user_data:${userId}`, 'meta_data', (err, reply) => { 
         if (err || reply === 0) return res.status(404).send('Meta_data not found');
         res.status(200).send({ message: 'Meta_data deleted successfully' });
     });
@@ -59,7 +58,7 @@ router.delete('/:user_id/meta_data', (req, res) => {
 // 获取用户的聊天数据
 router.get('/:user_id/chat', (req, res) => {
     const userId = req.params.user_id;
-    client.hget(`${userId}`, 'chat', (err, data) => {
+    client.hget(`user_data:${userId}`, 'chat', (err, data) => { 
         if (err) return res.status(500).send('Error retrieving chat data');
         if (!data) return res.status(404).send('Chat data not found');
         try {
@@ -75,7 +74,7 @@ router.get('/:user_id/chat', (req, res) => {
 router.post('/:user_id/chat', (req, res) => {
     const userId = req.params.user_id;
     const chatData = req.body;
-    client.hset(`${userId}`, 'chat', JSON.stringify(chatData), (err, reply) => {
+    client.hset(`user_data:${userId}`, 'chat', JSON.stringify(chatData), (err, reply) => { 
         if (err) return res.status(500).send('Error saving chat data');
         res.status(200).send({ message: 'Chat data created successfully' });
     });
@@ -85,7 +84,7 @@ router.post('/:user_id/chat', (req, res) => {
 router.put('/:user_id/chat', (req, res) => {
     const userId = req.params.user_id;
     const chatData = req.body;
-    client.hset(`${userId}`, 'chat', JSON.stringify(chatData), (err, reply) => {
+    client.hset(`user_data:${userId}`, 'chat', JSON.stringify(chatData), (err, reply) => { 
         if (err) return res.status(500).send('Error updating chat data');
         res.status(200).send({ message: 'Chat data updated successfully' });
     });
@@ -94,7 +93,7 @@ router.put('/:user_id/chat', (req, res) => {
 // 删除聊天数据
 router.delete('/:user_id/chat', (req, res) => {
     const userId = req.params.user_id;
-    client.hdel(`${userId}`, 'chat', (err, reply) => {
+    client.hdel(`user_data:${userId}`, 'chat', (err, reply) => { 
         if (err || reply === 0) return res.status(404).send('Chat data not found');
         res.status(200).send({ message: 'Chat data deleted successfully' });
     });

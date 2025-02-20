@@ -21,6 +21,7 @@ const chatRoutes = require('./routes/chat');      // 聊天模块
 app.use(cors({
   origin: [
     'http://localhost:8080', 
+    'http://localhost:8081', 
     'http://chenjiating.com',
     'http://www.chenjiating.com',
     'https://chenjiating.com',

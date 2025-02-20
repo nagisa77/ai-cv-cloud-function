@@ -1,5 +1,3 @@
-// auth.js 
-
 /*
 > 发送验证码
 curl -X POST http://localhost:9000/auth/captcha/send \
@@ -13,7 +11,7 @@ curl -X POST http://localhost:9000/auth/captcha/login \
   -H "Content-Type: application/json" \
   -d '{
     "email": "cjt807916@gmail.com",
-    "captcha": "323396"
+    "captcha": "965366"
   }'
 */
 const express = require('express');
@@ -21,6 +19,7 @@ const router = express.Router();
 const client = require('../utils/redis');
 const { Resend } = require('resend');
 const jwt = require('jsonwebtoken');
+const { v4: uuidv4 } = require('uuid'); 
 const resend = new Resend(process.env.RESEND_API_KEY, {
     fetch: require('node-fetch')
 });
@@ -70,11 +69,10 @@ router.post('/captcha/send', validateContact, async (req, res) => {
         const { contact, contactType } = req;
         const captcha = generateCaptcha();
 
-        // 使用 HSET 存储到哈希表
         client
             .multi()
-            .hset('captcha', contact, captcha) // 设置哈希字段
-            .expire('captcha', 600) // 设置整个哈希表过期时间
+            .hset('captcha', contact, captcha)
+            .expire('captcha', 600)
             .exec();
 
         if (contactType === 'email') {
@@ -88,13 +86,10 @@ router.post('/captcha/send', validateContact, async (req, res) => {
             if (error) throw error;
         }
 
-        // 如果是手机号，这里可以接入短信服务商API
-
         res.json({
             code: 200,
             message: '验证码已发送',
             data: {
-                // 测试环境下返回验证码，生产环境应删除
                 ...(process.env.NODE_ENV !== 'production' && { captcha })
             }
         });
@@ -124,11 +119,8 @@ router.post('/captcha/login', validateContact, async (req, res) => {
         // 从 Redis 获取验证码
         const storedCaptcha = await new Promise((resolve, reject) => {
             client.hget('captcha', contact, (err, data) => {
-                if (err) {
-                    reject(err);
-                } else {
-                    resolve(data);
-                }
+                if (err) reject(err);
+                else resolve(data);
             });
         });
 
@@ -146,16 +138,36 @@ router.post('/captcha/login', validateContact, async (req, res) => {
             });
         }
 
-        // 构造 payload
-        const payload = { contact };
-        // 生成 token，有效期 1 小时
-        const token = jwt.sign(payload, secretKey, { expiresIn: '1h' });
+        // 获取或创建用户ID
+        let userId = await new Promise((resolve, reject) => {
+            client.hget('user_contacts', contact, (err, data) => {
+                if (err) reject(err);
+                else resolve(data);
+            });
+        });
+
+        if (!userId) {
+            userId = uuidv4();
+            await new Promise((resolve, reject) => {
+                client.hset('user_contacts', contact, userId, (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        }
+
+        // 生成 JWT Token
+        const payload = { user_id: userId, contact };
+        const token = jwt.sign(payload, secretKey, { expiresIn: '1d' });
+
+        // 返回登录结果
         res.json({
             code: 200,
             message: '登录成功',
             data: {
                 token: token,
                 user: {
+                    user_id: userId, 
                     contact,
                     type: req.contactType
                 }

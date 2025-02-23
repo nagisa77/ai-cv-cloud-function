@@ -6,7 +6,7 @@ const axios = require('axios');
 // 代理GPT请求的接口
 router.post('/completions', async (req, res) => {
   try {
-    const { messages, model = 'gpt-4o', temperature = 0.7 } = req.body;
+    const { messages, model = 'deepseek-r1', temperature = 0.7 } = req.body;
     
     console.log('[GPT Request] 收到请求:', { messages, model, temperature });
 
@@ -18,7 +18,7 @@ router.post('/completions', async (req, res) => {
 
     // 调用OpenAI API
     const response = await axios.post(
-      'https://api.openai.com/v1/chat/completions',
+      'https://api.lkeap.cloud.tencent.com/v1/chat/completions',
       {
         model,
         messages,

@@ -43,11 +43,14 @@ router.post('/resumes', (req, res) => {
     const userId = req.user.user_id; // 从JWT获取
     const { name } = req.body;
     const resumeId = uuidv4();
-    const createdAt = new Date().toISOString();
+    const createdAt = new Date()
+
+    const dateStr = createdAt.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const defaultName = `${dateStr} 创建的简历`;
 
     client.hset(
         `resume:${resumeId}`,
-        ['userId', userId, 'name', name || '未命名简历', 'createdAt', createdAt],
+        ['userId', userId, 'name', name || defaultName, 'createdAt', createdAt.toISOString()],
         (err) => {
             if (err) return res.status(500).json({ code: 50002, message: '创建简历失败' });
 
@@ -55,7 +58,7 @@ router.post('/resumes', (req, res) => {
                 if (err) return res.status(500).json({ code: 50003, message: '保存列表失败' });
                 res.status(201).json({
                     code: 20101,
-                    data: { resumeId, name, createdAt }
+                    data: { resumeId, name: name || defaultName, createdAt: createdAt.toISOString() }
                 });
             });
         }

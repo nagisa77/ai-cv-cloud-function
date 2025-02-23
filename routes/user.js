@@ -41,7 +41,7 @@ curl -X POST "http://localhost:9000/user/resumes/5f4c946f-9eb7-4a42-a06b-6a5ecd7
 */
 router.post('/resumes', (req, res) => {
     const userId = req.user.user_id; // 从JWT获取
-    const { name } = req.body;
+    const { name, templateType } = req.body;
     const resumeId = uuidv4();
     const createdAt = new Date()
 
@@ -50,7 +50,7 @@ router.post('/resumes', (req, res) => {
 
     client.hset(
         `resume:${resumeId}`,
-        ['userId', userId, 'name', name || defaultName, 'createdAt', createdAt.toISOString()],
+        ['userId', userId, 'name', name || defaultName, 'createdAt', createdAt.toISOString(), 'templateType', templateType],
         (err) => {
             if (err) return res.status(500).json({ code: 50002, message: '创建简历失败' });
 
@@ -58,7 +58,7 @@ router.post('/resumes', (req, res) => {
                 if (err) return res.status(500).json({ code: 50003, message: '保存列表失败' });
                 res.status(201).json({
                     code: 20101,
-                    data: { resumeId, name: name || defaultName, createdAt: createdAt.toISOString() }
+                    data: { resumeId, name: name || defaultName, createdAt: createdAt.toISOString(), templateType }
                 });
             });
         }
@@ -85,7 +85,7 @@ router.get('/resumes', (req, res) => {
         }
 
         const pipeline = client.multi();
-        resumeIds.forEach(id => pipeline.hgetall(`resume:${id}`)); // 确保使用 hgetall
+        resumeIds.forEach(id => pipeline.hgetall(`resume:${id}`));
 
         pipeline.exec((err, results) => {
             if (err) {
@@ -93,11 +93,18 @@ router.get('/resumes', (req, res) => {
                 return res.status(500).json({ code: 50004, message: '获取列表失败' });
             }
 
+            // 构造简历数组并排序
             const resumes = results.map((data, index) => ({
                 resumeId: resumeIds[index],
                 name: data.name,
-                createdAt: data.createdAt
-            }));
+                createdAt: data.createdAt,
+                templateType: data.templateType
+            })).sort((a, b) => {
+                // 将日期字符串转换为时间戳进行比较
+                const timeA = new Date(a.createdAt).getTime();
+                const timeB = new Date(b.createdAt).getTime();
+                return timeB - timeA; // 降序排列（最新在前）
+            });
 
             res.json({ code: 20002, data: resumes });
         });

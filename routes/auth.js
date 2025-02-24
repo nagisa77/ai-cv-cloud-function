@@ -20,9 +20,10 @@ const client = require('../utils/redis');
 const { Resend } = require('resend');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid'); 
-const resend = new Resend(process.env.RESEND_API_KEY, {
-    fetch: require('node-fetch')
-});
+// const resend = new Resend(process.env.RESEND_API_KEY, {
+//     fetch: require('node-fetch')
+// });
+const resend = new Resend(process.env.RESEND_API_KEY);
 const secretKey = process.env.JWT_SECRET
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

@@ -1,6 +1,6 @@
 // app.js
-globalThis.Headers = require('node-fetch').Headers;
-globalThis.fetch = require('node-fetch');
+// globalThis.Headers = require('node-fetch').Headers;
+// globalThis.fetch = require('node-fetch');
 
 const dotenv = require('dotenv');
 // 配置环境变量
@@ -21,6 +21,8 @@ const chatRoutes = require('./routes/chat');      // 聊天模块
 app.use(cors({
   origin: [
     'http://localhost:8080', 
+    'https://localhost:8080', 
+
     'http://localhost:8081', 
     'http://chenjiating.com',
     'http://www.chenjiating.com',

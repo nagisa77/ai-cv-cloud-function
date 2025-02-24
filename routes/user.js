@@ -158,25 +158,41 @@ curl -X DELETE "http://localhost:9000/user/resumes/5f4c946f-9eb7-4a42-a06b-6a5ec
 router.route('/resumes/:resume_id/meta_data')
     .get(validateResume, (req, res) => {
         const key = `user_data:${req.user.user_id}:${req.params.resume_id}`;
+        console.log(`[GET MetaData] 请求用户ID: ${req.user.user_id}, 简历ID: ${req.params.resume_id}`);
 
         client.hget(key, 'meta_data', (err, data) => {
-            if (err) return res.status(500).json({ code: 50006, message: '获取失败' });
+            if (err) {
+                console.error(`[GET MetaData] 获取失败: ${err.message}`);
+                return res.status(500).json({ code: 50006, message: '获取失败' });
+            }
+            console.log(`[GET MetaData] 成功获取数据: ${data}`);
             res.json({ code: 20004, data: data ? JSON.parse(data) : {} });
         });
     })
     .post(validateResume, (req, res) => {
         const key = `user_data:${req.user.user_id}:${req.params.resume_id}`;
         const value = JSON.stringify(req.body);
+        console.log(`[POST MetaData] 请求用户ID: ${req.user.user_id}, 简历ID: ${req.params.resume_id}, 数据: ${value}`);
 
         client.hset(key, 'meta_data', value, (err) => {
-            if (err) return res.status(500).json({ code: 50007, message: '保存失败' });
+            if (err) {
+                console.error(`[POST MetaData] 保存失败: ${err.message}`);
+                return res.status(500).json({ code: 50007, message: '保存失败' });
+            }
+            console.log(`[POST MetaData] 成功保存数据`);
             res.status(201).json({ code: 20102, data: req.body });
         });
     })
     .delete(validateResume, (req, res) => {
-        client.hdel(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'meta_data', 
-        (err) => {
-            if (err) return res.status(500).json({ code: 50008, message: '删除失败' });
+        const key = `user_data:${req.user.user_id}:${req.params.resume_id}`;
+        console.log(`[DELETE MetaData] 请求用户ID: ${req.user.user_id}, 简历ID: ${req.params.resume_id}`);
+
+        client.hdel(key, 'meta_data', (err) => {
+            if (err) {
+                console.error(`[DELETE MetaData] 删除失败: ${err.message}`);
+                return res.status(500).json({ code: 50008, message: '删除失败' });
+            }
+            console.log(`[DELETE MetaData] 成功删除元数据`);
             res.json({ code: 20005, message: '元数据已删除' });
         });
     });
@@ -197,7 +213,6 @@ curl -X GET "http://localhost:9000/user/resumes/5f4c946f-9eb7-4a42-a06b-6a5ecd73
 -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiMGFhOTA1YWMtOTEyMS00ZjQyLWIzYzQtZTI4MjE2Y2RjNjI3IiwiY29udGFjdCI6ImNqdDgwNzkxNkBnbWFpbC5jb20iLCJpYXQiOjE3NDAwNzQ1NjcsImV4cCI6MTc0MDE2MDk2N30.b044UJuuV9gY887atUGLicIjbCp1q-kJ3KZVWvCjCdI"
 
 */
-
 router.route('/resumes/:resume_id/chat')
     .get(validateResume, (req, res) => {
         client.hget(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'chat', 
@@ -214,5 +229,25 @@ router.route('/resumes/:resume_id/chat')
             res.status(201).json({ code: 20103, data: req.body });
         });
     });
+
+// 添加删除简历接口
+router.delete('/resumes/:resume_id', validateResume, (req, res) => {
+    const resumeId = req.params.resume_id;
+    const userId = req.user.user_id;
+  
+    // 使用事务处理多个删除操作
+    const multi = client.multi()
+      .del(`resume:${resumeId}`)
+      .srem(`user:${userId}:resumes`, resumeId)
+      .del(`user_data:${userId}:${resumeId}`);
+  
+    multi.exec((err) => {
+      if (err) {
+        console.error('删除简历失败:', err);
+        return res.status(500).json({ code: 50011, message: '删除失败' });
+      }
+      res.json({ code: 20007, message: '简历已删除' });
+    });
+  });
 
 module.exports = router;

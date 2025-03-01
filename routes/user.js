@@ -65,6 +65,52 @@ router.post('/resumes', (req, res) => {
     );
 });
 
+// 修改简历基本信息（名称、模板类型等）
+router.patch('/resumes/:resume_id', validateResume, (req, res) => {
+    const resumeId = req.params.resume_id;
+    const updates = req.body;
+    const validFields = ['name', 'templateType']; // 允许修改的字段
+    
+    // 过滤有效更新字段
+    const fieldsToUpdate = Object.keys(updates)
+        .filter(key => validFields.includes(key))
+        .map(key => [key, updates[key]])
+        .flat();
+
+    if (fieldsToUpdate.length === 0) {
+        return res.status(400).json({ 
+            code: 40001, 
+            message: '请求参数错误，至少需要一个有效字段（name/templateType）' 
+        });
+    }
+
+    // 添加更新时间戳
+    fieldsToUpdate.push('updatedAt', new Date().toISOString());
+
+    client.hset(`resume:${resumeId}`, fieldsToUpdate, (err) => {
+        if (err) {
+            console.error('更新简历失败:', err);
+            return res.status(500).json({ code: 50012, message: '更新简历失败' });
+        }
+
+        // 返回更新后的完整数据
+        client.hgetall(`resume:${resumeId}`, (err, resume) => {
+            if (err || !resume) return res.status(500).json({ code: 50013, message: '获取数据失败' });
+            
+            res.json({
+                code: 20008,
+                data: {
+                    resumeId,
+                    name: resume.name,
+                    templateType: resume.templateType,
+                    createdAt: resume.createdAt,
+                    updatedAt: resume.updatedAt
+                }
+            });
+        });
+    });
+});
+
 // 获取简历列表
 /*
 curl -X GET "http://localhost:9000/user/resumes" \

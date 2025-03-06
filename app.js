@@ -28,6 +28,11 @@ app.use(cors({
     'http://www.chenjiating.com',
     'https://chenjiating.com',
     'https://www.chenjiating.com',
+
+    'http://jianlijun.com',
+    'https://jianlijun.com',
+    'http://www.jianlijun.com',
+    'https://www.jianlijun.com',
   ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   credentials: true, 

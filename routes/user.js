@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const client = require('../utils/redis');
 const { v4: uuidv4 } = require('uuid');
-
+const { router: picRouter, takeScreenshot } = require('./pic');
 /**
  * --- 中间件优化 ---
  * 修改验证逻辑，直接使用JWT中的用户ID
@@ -60,6 +60,13 @@ router.post('/resumes', (req, res) => {
                     code: 20101,
                     data: { resumeId, name: name || defaultName, createdAt: createdAt.toISOString(), templateType }
                 });
+
+                // 启动异步任务
+                takeScreenshot(templateType, resumeId, req.headers.authorization)
+                    .then(url => {
+                        client.hset(`resume:${resumeId}`, 'screenshotUrl', url);
+                    })
+                    .catch(err => console.error('截图失败:', err));
             });
         }
     );
@@ -70,7 +77,7 @@ router.patch('/resumes/:resume_id', validateResume, (req, res) => {
     const resumeId = req.params.resume_id;
     const updates = req.body;
     const validFields = ['name', 'templateType']; // 允许修改的字段
-    
+
     // 过滤有效更新字段
     const fieldsToUpdate = Object.keys(updates)
         .filter(key => validFields.includes(key))
@@ -78,9 +85,9 @@ router.patch('/resumes/:resume_id', validateResume, (req, res) => {
         .flat();
 
     if (fieldsToUpdate.length === 0) {
-        return res.status(400).json({ 
-            code: 40001, 
-            message: '请求参数错误，至少需要一个有效字段（name/templateType）' 
+        return res.status(400).json({
+            code: 40001,
+            message: '请求参数错误，至少需要一个有效字段（name/templateType）'
         });
     }
 
@@ -96,7 +103,7 @@ router.patch('/resumes/:resume_id', validateResume, (req, res) => {
         // 返回更新后的完整数据
         client.hgetall(`resume:${resumeId}`, (err, resume) => {
             if (err || !resume) return res.status(500).json({ code: 50013, message: '获取数据失败' });
-            
+
             res.json({
                 code: 20008,
                 data: {
@@ -108,6 +115,14 @@ router.patch('/resumes/:resume_id', validateResume, (req, res) => {
                 }
             });
         });
+
+        // 检查模板类型是否变更
+        if (req.body.templateType) {
+            takeScreenshot(req.body.templateType, resumeId, req.headers.authorization)
+                .then(url => {
+                    client.hset(`resume:${resumeId}`, 'screenshotUrl', url);
+                });
+        }
     });
 });
 
@@ -144,7 +159,8 @@ router.get('/resumes', (req, res) => {
                 resumeId: resumeIds[index],
                 name: data.name,
                 createdAt: data.createdAt,
-                templateType: data.templateType
+                templateType: data.templateType,
+                screenshotUrl: data.screenshotUrl || null
             })).sort((a, b) => {
                 // 将日期字符串转换为时间戳进行比较
                 const timeA = new Date(a.createdAt).getTime();
@@ -164,10 +180,10 @@ curl -X GET "http://localhost:9000/user/resumes/550e8400-e29b-41d4-a716-44665544
 */
 router.get('/resumes/:resume_id', validateResume, (req, res) => {
     const resumeId = req.params.resume_id;
-    
+
     client.hgetall(`resume:${resumeId}`, (err, resume) => {
         if (err || !resume) return res.status(404).json({ code: 40402, message: '简历不存在' });
-        
+
         res.json({
             code: 20003,
             data: {
@@ -216,17 +232,51 @@ router.route('/resumes/:resume_id/meta_data')
         });
     })
     .post(validateResume, (req, res) => {
-        const key = `user_data:${req.user.user_id}:${req.params.resume_id}`;
-        const value = JSON.stringify(req.body);
-        console.log(`[POST MetaData] 请求用户ID: ${req.user.user_id}, 简历ID: ${req.params.resume_id}, 数据: ${value}`);
+        const resumeId = req.params.resume_id;
+        const key = `user_data:${req.user.user_id}:${resumeId}`;
+        const newMetaData = req.body;
+        const newValue = JSON.stringify(newMetaData);
+        console.log(`[POST MetaData] 请求用户ID: ${req.user.user_id}, 简历ID: ${resumeId}, 数据: ${newValue}`);
 
-        client.hset(key, 'meta_data', value, (err) => {
+        // 先获取旧的元数据，比较是否有变化
+        client.hget(key, 'meta_data', (err, oldData) => {
             if (err) {
-                console.error(`[POST MetaData] 保存失败: ${err.message}`);
+                console.error(`[POST MetaData] 获取旧数据失败: ${err.message}`);
                 return res.status(500).json({ code: 50007, message: '保存失败' });
             }
-            console.log(`[POST MetaData] 成功保存数据`);
-            res.status(201).json({ code: 20102, data: req.body });
+            // 保存新数据
+            client.hset(key, 'meta_data', newValue, (err) => {
+                if (err) {
+                    console.error(`[POST MetaData] 保存失败: ${err.message}`);
+                    return res.status(500).json({ code: 50007, message: '保存失败' });
+                }
+                res.status(201).json({ code: 20102, data: newMetaData });
+
+                // 若旧数据不存在或与新数据不相同，则调用截图接口
+                if (!oldData || oldData !== newValue) {
+                    client.hget(`resume:${resumeId}`, 'templateType', (err, templateType) => {
+                        if (err) {
+                            console.error('获取 templateType 失败:', err);
+                            return;
+                        }
+                        if (!templateType) {
+                            console.warn(`resume:${resumeId} 未设置 templateType，跳过截图。`);
+                            return;
+                        }
+                        takeScreenshot(templateType, resumeId, req.headers.authorization)
+                            .then(url => {
+                                client.hset(`resume:${resumeId}`, 'screenshotUrl', url, (err) => {
+                                    if (err) {
+                                        console.error('更新 screenshotUrl 失败:', err);
+                                    }
+                                });
+                            })
+                            .catch(err => {
+                                console.error('截图失败:', err);
+                            });
+                    });
+                }
+            });
         });
     })
     .delete(validateResume, (req, res) => {
@@ -261,39 +311,39 @@ curl -X GET "http://localhost:9000/user/resumes/5f4c946f-9eb7-4a42-a06b-6a5ecd73
 */
 router.route('/resumes/:resume_id/chat')
     .get(validateResume, (req, res) => {
-        client.hget(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'chat', 
-        (err, data) => {
-            if (err) return res.status(500).json({ code: 50009, message: '获取失败' });
-            res.json({ code: 20006, data: data ? JSON.parse(data) : [] });
-        });
+        client.hget(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'chat',
+            (err, data) => {
+                if (err) return res.status(500).json({ code: 50009, message: '获取失败' });
+                res.json({ code: 20006, data: data ? JSON.parse(data) : [] });
+            });
     })
     .post(validateResume, (req, res) => {
         const value = JSON.stringify(req.body);
-        client.hset(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'chat', value, 
-        (err) => {
-            if (err) return res.status(500).json({ code: 50010, message: '保存失败' });
-            res.status(201).json({ code: 20103, data: req.body });
-        });
+        client.hset(`user_data:${req.user.user_id}:${req.params.resume_id}`, 'chat', value,
+            (err) => {
+                if (err) return res.status(500).json({ code: 50010, message: '保存失败' });
+                res.status(201).json({ code: 20103, data: req.body });
+            });
     });
 
 // 添加删除简历接口
 router.delete('/resumes/:resume_id', validateResume, (req, res) => {
     const resumeId = req.params.resume_id;
     const userId = req.user.user_id;
-  
+
     // 使用事务处理多个删除操作
     const multi = client.multi()
-      .del(`resume:${resumeId}`)
-      .srem(`user:${userId}:resumes`, resumeId)
-      .del(`user_data:${userId}:${resumeId}`);
-  
+        .del(`resume:${resumeId}`)
+        .srem(`user:${userId}:resumes`, resumeId)
+        .del(`user_data:${userId}:${resumeId}`);
+
     multi.exec((err) => {
-      if (err) {
-        console.error('删除简历失败:', err);
-        return res.status(500).json({ code: 50011, message: '删除失败' });
-      }
-      res.json({ code: 20007, message: '简历已删除' });
+        if (err) {
+            console.error('删除简历失败:', err);
+            return res.status(500).json({ code: 50011, message: '删除失败' });
+        }
+        res.json({ code: 20007, message: '简历已删除' });
     });
-  });
+});
 
 module.exports = router;

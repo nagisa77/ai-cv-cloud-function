@@ -51,87 +51,21 @@ const getBrowser = async () => {
     }
 };
 
-/**
- * 简历截图功能
- * GET /pic/screenshot/:type/:id
- */
-router.get('/screenshot/:type/:id', async (req, res) => {
-    const { type, id } = req.params;
-    const token = req.headers.authorization;
-
-    console.log(`[Request] 收到截图请求: type=${type}, id=${id}, token=${token ? '存在' : '缺失'}`);
-
-    if (!token) {
-        console.warn('[Authorization Error] 缺少认证令牌');
-        return res.status(400).json({
-            code: 40002,
-            message: '缺少认证令牌'
-        });
-    }
-
+async function takeScreenshot(type, id, token) {
     let browser = null;
     try {
         browser = await getBrowser();
-        console.log('[Browser] 启动浏览器实例成功');
-
         const page = await browser.newPage();
-        console.log('[Page] 创建新页面成功');
-
-        // 设置认证 Token
-        await page.setExtraHTTPHeaders({
-            'Authorization': token
-        });
-        console.log('[Page] 设置认证令牌成功');
-
-        // 设置视口尺寸为常见的A4比例（1200x1697）
-        await page.setViewport({
-            width: 1602,
-            height: 917,
-            deviceScaleFactor: 2 // 提高分辨率
-        });
-
-        // 导航到目标页面
+        await page.setExtraHTTPHeaders({ 'Authorization': token });
+        await page.setViewport({ width: 1602, height: 917, deviceScaleFactor: 2 });
         const url = `http://localhost:8080/#/create-resume/${type}/${id}`;
-        console.log(`[Navigation] 导航到URL: ${url}`);
-        await page.goto(url, {
-            waitUntil: 'networkidle2',
-            timeout: 30000
-        });
-        console.log('[Navigation] 页面加载完成');
-
-        // 等待内容加载（根据实际页面调整选择器）
-        const element = await page.waitForSelector('.cv-page', {
-            timeout: 30000
-        });
-        console.log('[Content] 内容加载完成');
-
+        await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+        const element = await page.waitForSelector('.cv-page', { timeout: 30000 });
         const boundingBox = await element.boundingBox();
-        
-        if (!boundingBox) {
-            throw new Error('目标元素不可见或没有尺寸');
-        }
-
-        // 调试日志：打印视口设置
-        console.log('[Debug] 视口设置:', page.viewport());
-
-        // 生成截图（确保返回Buffer）
-        let screenshotBuffer = await page.screenshot({
-            type: 'png',
-            clip: boundingBox, 
-            omitBackground: false
-        });
-
-        // 调试日志增强
-        console.log('[Debug] 原始数据类型:', screenshotBuffer.constructor.name);
-        console.log('[Debug] 数据特征:', {
-            isBuffer: Buffer.isBuffer(screenshotBuffer),
-            isUint8Array: screenshotBuffer instanceof Uint8Array,
-            byteLength: screenshotBuffer.byteLength
-        });
+        let screenshotBuffer = await page.screenshot({ type: 'png', clip: boundingBox });
 
         // 强制转换保障（兼容所有二进制格式）
         if (!Buffer.isBuffer(screenshotBuffer)) {
-            console.warn('[Debug] 需要类型转换，原始类型:', screenshotBuffer.constructor.name);
             screenshotBuffer = Buffer.from(
                 screenshotBuffer.buffer || screenshotBuffer,
                 screenshotBuffer.byteOffset,
@@ -139,52 +73,40 @@ router.get('/screenshot/:type/:id', async (req, res) => {
             );
         }
 
-        // 验证PNG文件头（确保数据有效性）
-        const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
-        if (!screenshotBuffer.slice(0, 8).equals(PNG_HEADER)) {
-            throw new Error('生成的截图非有效PNG格式');
-        }
-
-        // 上传到 COS（添加Encoding处理）
-        const fileExtension = 'png';
-        const cosKey = `screenshots/${uuidv4()}.${fileExtension}`;
-        console.log(`[COS] 准备上传文件: ${cosKey}`);
-        const params = {
+        // 上传到 COS
+        const cosKey = `screenshots/${id}.png`;
+        await cos.putObject({
             Bucket: process.env.COS_BUCKET,
             Region: process.env.COS_REGION,
             Key: cosKey,
             Body: screenshotBuffer,
             ACL: 'public-read',
-            ContentType: 'image/png',
-            ContentEncoding: 'binary'
-        };
-
-        const { Location } = await cos.putObject(params);
-        console.log(`[COS] 文件上传成功: ${Location}`);
-
-        res.status(200).json({
-            code: 0,
-            data: {
-                url: `https://${params.Bucket}.cos.${params.Region}.myqcloud.com/${cosKey}`,
-                type: 'image/png'
-            }
+            ContentType: 'image/png'
         });
-        console.log('[Response] 响应成功发送');
 
-    } catch (error) {
-        console.error('[Screenshot Error]', error);
-        res.status(500).json({
-            code: 50002,
-            message: '截图生成失败',
-            error: error.message
-        });
+        console.log(`take screenshot success: https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`);
+
+        return `https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`;
     } finally {
-        if (browser) {
-            await browser.close();
-            console.log('[Browser] 浏览器实例关闭');
-        }
+        if (browser) await browser.close();
+    }
+}
+
+router.get('/screenshot/:type/:id', async (req, res) => {
+    try {
+        const { type, id } = req.params;
+        const token = req.headers.authorization;
+        const url = await takeScreenshot(type, id, token);
+        res.status(200).json({ code: 0, data: { url } });
+    } catch (error) {
+        res.status(500).json({ 
+            code: 50002, 
+            message: '截图失败',
+            error: error.message 
+        });
     }
 });
+``
 /**
  * 图片上传接口
  * POST /pic
@@ -238,4 +160,7 @@ router.post('/', upload.single('image'), async (req, res) => {
     }
 });
 
-module.exports = router;
+module.exports = {
+    router,
+    takeScreenshot
+};

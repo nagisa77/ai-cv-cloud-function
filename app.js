@@ -13,7 +13,7 @@ const app = express();
 // ---------- 引入自定义模块 ----------
 const userRoutes = require('./routes/user');      // 用户数据模块
 const authRoutes = require('./routes/auth');      // 登录模块
-const picRoutes = require('./routes/pic');      // 图片上传模块
+const { router: picRoutes, takeScreenshot } = require('./routes/pic');      // 图片上传模块
 const chatRoutes = require('./routes/chat');      // 聊天模块
 
 // ---------- 中间件配置 ----------

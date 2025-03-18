@@ -51,14 +51,14 @@ const getBrowser = async () => {
     }
 };
 
-async function takeScreenshot(type, id, token) {
+async function takeScreenshot(type, id, color, token) {
     let browser = null;
     try {
         browser = await getBrowser();
         const page = await browser.newPage();
         await page.setExtraHTTPHeaders({ 'Authorization': token });
         await page.setViewport({ width: 1602, height: 917, deviceScaleFactor: 2 });
-        const url = `http://localhost:8080/#/create-resume/${type}/${id}`;
+        const url = `http://localhost:8080/#/create-resume/${type}/${id}/${color}`;
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
         const element = await page.waitForSelector('.cv-page', { timeout: 30000 });
         const boundingBox = await element.boundingBox();
@@ -92,11 +92,11 @@ async function takeScreenshot(type, id, token) {
     }
 }
 
-router.get('/screenshot/:type/:id', async (req, res) => {
+router.get('/screenshot/:type/:id/:color', async (req, res) => {
     try {
-        const { type, id } = req.params;
+        const { type, id, color } = req.params;
         const token = req.headers.authorization;
-        const url = await takeScreenshot(type, id, token);
+        const url = await takeScreenshot(type, id, color, token);
         res.status(200).json({ code: 0, data: { url } });
     } catch (error) {
         res.status(500).json({ 

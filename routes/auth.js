@@ -69,14 +69,23 @@ router.post('/captcha/send', validateContact, async (req, res) => {
     try {
         const { contact, contactType } = req;
         const captcha = generateCaptcha();
+        
+        console.log(`[验证码发送] 开始: 联系方式=${contact}, 类型=${contactType}, 验证码=${captcha}`);
 
         client
             .multi()
             .hset('captcha', contact, captcha)
             .expire('captcha', 600)
-            .exec();
+            .exec((err, results) => {
+                if (err) {
+                    console.error(`[验证码发送] Redis存储失败: ${err.message}`);
+                    throw err;
+                }
+                console.log(`[验证码发送] Redis存储成功: 结果=${JSON.stringify(results)}`);
+            });
 
         if (contactType === 'email') {
+            console.log(`[验证码发送] 准备发送邮件: 目标=${contact}`);
             const { data, error } = await resend.emails.send({
                 from: 'AI-CV <noreply@chenjiating.com>',
                 to: [contact],
@@ -84,9 +93,16 @@ router.post('/captcha/send', validateContact, async (req, res) => {
                 html: `<p>您的验证码是：<strong>${captcha}</strong>，10分钟内有效</p>`
             });
 
-            if (error) throw error;
+            if (error) {
+                console.error(`[验证码发送] 邮件发送失败: ${error.message}`);
+                throw error;
+            }
+            console.log(`[验证码发送] 邮件发送成功: ID=${data?.id || '未返回ID'}`);
+        } else {
+            console.log(`[验证码发送] 短信发送功能未实现: 目标=${contact}`);
         }
 
+        console.log(`[验证码发送] 完成: 联系方式=${contact}`);
         res.json({
             code: 200,
             message: '验证码已发送',
@@ -95,7 +111,7 @@ router.post('/captcha/send', validateContact, async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('[Captcha Error]', error);
+        console.error(`[验证码发送] 失败: 错误=${error.message}`, error);
         res.status(500).json({
             code: 50001,
             message: '验证码发送失败',

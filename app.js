@@ -22,7 +22,8 @@ app.use(cors({
   origin: [
     'http://localhost:8080', 
     'https://localhost:8080', 
-
+    'http://192.168.7.235:8080', 
+    'https://192.168.7.235:8080', 
     'http://localhost:8081', 
     'http://chenjiating.com',
     'http://www.chenjiating.com',

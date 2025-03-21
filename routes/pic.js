@@ -1,20 +1,15 @@
 // pic.js
-/*
-curl -i -X POST http://localhost:9000/pic \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJjb250YWN0IjoiY2p0ODA3OTE2QGdtYWlsLmNvbSIsImlhdCI6MTczOTg5MDY2OSwiZXhwIjoxNzM5ODk0MjY5fQ.KNdcwii61lmuikdg5Sb7WH6q7UiK7OUIDOpyJzs3kTs" \
-  -F "image=@/Users/tim/Desktop/截屏2024-11-08 20.56.45.png"
-
-*/
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const COS = require('cos-nodejs-sdk-v5');
 const { v4: uuidv4 } = require('uuid');
-const puppeteer = require('puppeteer');
-const chromium = require('@sparticuz/chromium-min');
+const puppeteer = require('puppeteer-core');
+const chromium = require('@sparticuz/chromium');
+const client = require('../utils/redis'); // 用于存储 screenshotUrl
 const isProduction = process.env.NODE_ENV === 'production';
 
-// 初始化COS永久密钥
+// 初始化 COS
 const cos = new COS({
     SecretId: process.env.COS_SECRET_ID,
     SecretKey: process.env.COS_SECRET_KEY
@@ -23,7 +18,7 @@ const cos = new COS({
 // 文件上传配置
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB限制
+    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
@@ -33,38 +28,52 @@ const upload = multer({
     }
 });
 
+// 获取 Puppeteer Browser 实例
 const getBrowser = async () => {
     if (isProduction) {
-        // 生产环境配置（云函数/Serverless）
+        // 生产环境（如 Serverless）时使用 chromium-min
         return puppeteer.launch({
             args: chromium.args,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
         });
     } else {
-        // 本地开发配置
+        // 本地调试
         return puppeteer.launch({
             headless: true,
-            executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', // 本地Chrome路径
+            executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
             args: ['--no-sandbox', '--disable-setuid-sandbox']
         });
     }
 };
 
+// 核心截图逻辑
 async function takeScreenshot(type, id, color, token) {
-    let browser = null;
+    let browser;
     try {
         browser = await getBrowser();
         const page = await browser.newPage();
+
+        // 将用户的 JWT 传给前端路由（如需调用受限接口）
         await page.setExtraHTTPHeaders({ 'Authorization': token });
+
         await page.setViewport({ width: 1602, height: 917, deviceScaleFactor: 2 });
-        const url = `http://localhost:8080/#/create-resume/${type}/${id}/${color}`;
+
+        // 这里使用你的前端简历预览URL
+        // 例如 http://your-domain.com/#/create-resume/${type}/${id}/${color}
+        // Demo中用一个示例IP代替，按需修改
+        const url = `http://207.180.225.219:8080/#/create-resume/${type}/${id}/${color}`;
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+
         const element = await page.waitForSelector('.cv-page', { timeout: 30000 });
         const boundingBox = await element.boundingBox();
-        let screenshotBuffer = await page.screenshot({ type: 'png', clip: boundingBox });
+        
+        let screenshotBuffer = await page.screenshot({ 
+            type: 'png', 
+            clip: boundingBox 
+        });
 
-        // 强制转换保障（兼容所有二进制格式）
+        // 确保 screenshotBuffer 一定是 Buffer
         if (!Buffer.isBuffer(screenshotBuffer)) {
             screenshotBuffer = Buffer.from(
                 screenshotBuffer.buffer || screenshotBuffer,
@@ -84,38 +93,78 @@ async function takeScreenshot(type, id, color, token) {
             ContentType: 'image/png'
         });
 
-        console.log(`take screenshot success: https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`);
-
-        return `https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`;
+        const finalUrl = `https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`;
+        console.log(`[takeScreenshot] Success: resumeId=${id}, screenshotUrl=${finalUrl}`);
+        return finalUrl;
     } finally {
         if (browser) await browser.close();
     }
 }
 
-router.get('/screenshot/:type/:id/:color', async (req, res) => {
+// ========== 新增：校验简历归属中间件（可选） ==========
+const validateResumeOwnership = (req, res, next) => {
+    const userId = req.user.user_id;
+    const { resumeId } = req.body;
+    
+    if (!resumeId) {
+        return res.status(400).json({ code: 40002, message: 'resumeId is required in request body' });
+    }
+
+    client.hget(`resume:${resumeId}`, 'userId', (err, storedUserId) => {
+        if (err) {
+            console.error(`[validateResumeOwnership] Redis error: ${err.message}`);
+            return res.status(500).json({ code: 50001, message: 'System error' });
+        }
+        if (!storedUserId) {
+            console.warn(`[validateResumeOwnership] Resume not found: ${resumeId}`);
+            return res.status(404).json({ code: 40401, message: 'Resume not found' });
+        }
+        if (storedUserId !== userId) {
+            console.warn(`[validateResumeOwnership] No permission: user=${userId}, resumeOwner=${storedUserId}`);
+            return res.status(403).json({ code: 40301, message: 'No permission' });
+        }
+        next();
+    });
+};
+
+// ========== 新增：SCF 截图路由 ==========
+// 前端(或 user.js)只需要 post 到 /pic/scf-screenshot 
+// body: { resumeId, templateType, color }
+router.post('/scf-screenshot', validateResumeOwnership, async (req, res) => {
     try {
-        const { type, id, color } = req.params;
-        const token = req.headers.authorization;
-        const url = await takeScreenshot(type, id, color, token);
-        res.status(200).json({ code: 0, data: { url } });
-    } catch (error) {
-        res.status(500).json({ 
-            code: 50002, 
-            message: '截图失败',
-            error: error.message 
+        const { resumeId, templateType, color } = req.body;
+        console.log(`[SCF Screenshot] Start: resumeId=${resumeId}, templateType=${templateType}, color=${color}`);
+
+        // 1. 执行截图
+        const screenshotUrl = await takeScreenshot(templateType, resumeId, color, req.headers.authorization);
+
+        // 2. 将 screenshotUrl 存入 Redis
+        client.hset(`resume:${resumeId}`, 'screenshotUrl', screenshotUrl, (err) => {
+            if (err) {
+                console.error(`[SCF Screenshot] Failed to store screenshotUrl: ${err.message}`);
+                return res.status(500).json({ code: 50014, message: 'Failed to store screenshot url' });
+            }
+            console.log(`[SCF Screenshot] Successfully stored screenshotUrl, resumeId=${resumeId}`);
+            return res.json({ 
+                code: 20009, 
+                data: { resumeId, screenshotUrl } 
+            });
         });
+    } catch (error) {
+        console.error(`[SCF Screenshot] Error: ${error.message}`);
+        res.status(500).json({ code: 50015, message: 'Screenshot failed', error: error.message });
     }
 });
-``
+
 /**
- * 图片上传接口
+ * 保留原有的图片上传接口
  * POST /pic
  * 请求参数：
  * - image: 图片文件（multipart/form-data）
  */
 router.post('/', upload.single('image'), async (req, res) => {
     try {
-        // 验证文件存在性
+        // 验证文件存在
         if (!req.file) {
             return res.status(400).json({
                 code: 40001,
@@ -127,29 +176,29 @@ router.post('/', upload.single('image'), async (req, res) => {
         const fileExtension = req.file.originalname.split('.').pop();
         const cosKey = `uploads/${uuidv4()}.${fileExtension}`;
 
-        // COS上传配置
-        const params = {
+        // 上传到COS
+        const { Bucket, Region } = {
             Bucket: process.env.COS_BUCKET,
-            Region: process.env.COS_REGION,
+            Region: process.env.COS_REGION
+        };
+        const params = {
+            Bucket,
+            Region,
             Key: cosKey,
             Body: req.file.buffer,
             ACL: 'public-read'
         };
+        await cos.putObject(params);
 
-        // 执行上传
-        const { Location } = await cos.putObject(params);
-
-        // 返回标准格式响应
         res.status(200).json({
             code: 0,
             data: {
-                url: `https://${params.Bucket}.cos.${params.Region}.myqcloud.com/${cosKey}`,
+                url: `https://${Bucket}.cos.${Region}.myqcloud.com/${cosKey}`,
                 key: cosKey,
                 size: req.file.size,
                 mimeType: req.file.mimetype
             }
         });
-
     } catch (error) {
         console.error('[COS Error]', error);
         res.status(500).json({
@@ -162,5 +211,5 @@ router.post('/', upload.single('image'), async (req, res) => {
 
 module.exports = {
     router,
-    takeScreenshot
+    takeScreenshot  // 如其他模块需要直接调用，可保留
 };

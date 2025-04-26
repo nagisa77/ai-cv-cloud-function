@@ -81,7 +81,26 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
             });
         }
 
-        // 2. 调用腾讯云OCR，配置client
+        // 2. 从请求体中获取 “简历内容”、“简历模板”、“简历模板描述”
+        //    注意：如果前端是 form-data 方式，需要使用  -F "resume=xxxx" 这样的方式传参
+        const { resume, resumeTemplate, resumeTemplateDescription } = req.body;
+
+        // 对参数做一下简单校验（可根据需求自行调整）
+        if (!resumeTemplate) {
+            return res.status(400).json({
+                code: 40011,
+                message: '请提供简历模版（resumeTemplate）'
+            });
+        }
+        if (!resumeTemplateDescription) {
+            return res.status(400).json({
+                code: 40012,
+                message: '请提供简历模版描述（resumeTemplateDescription）'
+            });
+        }
+        // resume 可以是可选的
+
+        // 3. 调用腾讯云OCR，配置client
         const ocrClient = new OcrClient({
             credential: {
                 secretId: process.env.TENCENT_OCR_SECRET_ID,
@@ -93,8 +112,7 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
             },
         });
 
-        // 3. 组装OCR请求参数
-        // 注意：如果图片较大，可考虑使用 imageBase64 或 imageUrl，二选一
+        // 4. 组装OCR请求参数
         const ocrParams = {};
         if (imageBase64) {
             ocrParams.ImageBase64 = imageBase64;
@@ -103,44 +121,46 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
             ocrParams.ImageUrl = imageUrl;
         }
 
-        // 使用通用印刷体识别,也可根据实际情况使用其他OCR接口,比如：GeneralAccurateOCR
+        // 使用通用印刷体识别
         // https://cloud.tencent.com/document/api/866/33526
         console.log('[OCR Resume] OCR params:', ocrParams);
         const ocrResult = await ocrClient.GeneralBasicOCR(ocrParams);
         console.log('[OCR Resume] OCR result:', JSON.stringify(ocrResult, null, 2));
 
-        // 4. 提取OCR文本
-        // GeneralBasicOCR返回TextDetections的数组，每项有DetectedText
+        // 5. 提取OCR文本
         const textDetections = ocrResult.TextDetections || [];
         const extractedText = textDetections.map(item => item.DetectedText).join(' ');
         console.log('[OCR Resume] Extracted Text:', extractedText);
 
-        // 5. 调用青问 QWEN 接口
-        //    你已有 /chat/completions 代理接口，这里通过 axios 调用本地接口即可
-        //    下方示例：我们把 OCR 文本发给 QWEN 并让它输出一个“简历格式”。
+        // 6. 构造给 QWEN 的消息
+        //    将自定义的 “简历内容 (resume)”、“简历模板 (resumeTemplate)”、“简历模板描述 (resumeTemplateDescription)” 与 OCR 内容合并
         const messages = [
             {
                 role: 'system',
-                content: `你是一个资深的简历生成助手，请将用户提供的文本整理为一个标准的简历信息。`
+                content: `你是一个资深的简历生成助手，请根据用户提供的【简历模板描述】和【简历模板】，将OCR提取的文本以及用户已有的简历内容合并整理，生成符合此模板的简历信息。`
             },
             {
                 role: 'user',
-                content: `以下是从图片OCR提取的文本片段，请你根据这些信息，填充到下列简历模板中。如果信息缺失，可以留空。
+                content: `以下是用户提供的信息，请你将 OCR 文本和已有简历内容整合到指定的 JSON 模板中：
                 
-【简历模板】
-姓名: 
-电话: 
-邮箱: 
-工作经历: 
-教育经历: 
-技能专长: 
-自我评价:
-                
-【用户文本】:
+【简历模板描述】:
+${resumeTemplateDescription}
+
+【简历模板(这是一个JSON字符串)】:
+${resumeTemplate}
+
+【用户已有的简历内容（如果提供了）】:
+${resume || '（用户未提供额外简历内容）'}
+
+【OCR提取文本】:
 ${extractedText}
-`
+
+> 注意：如果有字段无法匹配或信息缺失，请保持该字段为空值；输出最终结果时，请以 JSON 结构返回，符合【简历模板】中的格式。`
             }
         ];
+
+        // 7. 调用青问 (QWEN) 接口
+        //    假设你有一个本地代理或直接调用阿里云 dashscope
         const response = await axios.post(
             'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             {
@@ -155,9 +175,10 @@ ${extractedText}
                 }
             }
         );
-        
+
         console.log('[GPT Response] 成功接收响应:', response.data);
 
+        // 8. 返回结果
         return res.json({
             code: 20020,
             data: {

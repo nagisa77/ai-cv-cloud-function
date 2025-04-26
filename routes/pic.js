@@ -8,6 +8,10 @@ const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
 const client = require('../utils/redis'); // 用于存储 screenshotUrl
 const isProduction = process.env.NODE_ENV === 'production';
+const tencentcloud = require("tencentcloud-sdk-nodejs");
+const OcrClient = tencentcloud.ocr.v20181119.Client;
+const axios = require('axios');
+
 
 // 初始化 COS
 const cos = new COS({
@@ -46,6 +50,131 @@ const getBrowser = async () => {
         });
     }
 };
+
+// ========== 新增接口：/pic/ocr-resume ==========
+// 说明：
+// 1) 支持 FormData 方式上传图片：字段名 image
+// 2) 支持 JSON 方式提交图片URL：{ "url": "https://xx.png" }
+// 3) 先用腾讯云OCR提取文字，然后将文字 + 预设简历模板，送给青问 QWEN，得到结构化简历
+// 4) 返回结构化简历
+router.post('/ocr-resume', upload.single('image'), async (req, res) => {
+    console.log('[OCR Resume] Request start...');
+
+    try {
+        // 1. 获取图片来源（本地上传 或 远程URL）
+        let imageBase64 = null;
+        let imageUrl = null;
+
+        if (req.file) {
+            // 用户通过 multipart/form-data 上传了图片
+            console.log('[OCR Resume] Received an uploaded file.');
+            imageBase64 = req.file.buffer.toString('base64');
+        } else if (req.body.url) {
+            // 用户在 JSON body 中提供了图片URL
+            console.log('[OCR Resume] Received an image URL:', req.body.url);
+            imageUrl = req.body.url;
+        } else {
+            // 都没提供
+            return res.status(400).json({
+                code: 40010,
+                message: '请提供 image 或者 url'
+            });
+        }
+
+        // 2. 调用腾讯云OCR，配置client
+        const ocrClient = new OcrClient({
+            credential: {
+                secretId: process.env.TENCENT_OCR_SECRET_ID,
+                secretKey: process.env.TENCENT_OCR_SECRET_KEY,
+            },
+            region: process.env.TENCENT_OCR_REGION || 'ap-shanghai',
+            profile: {
+                signMethod: "TC3-HMAC-SHA256", // 确保使用 v3 鉴权
+            },
+        });
+
+        // 3. 组装OCR请求参数
+        // 注意：如果图片较大，可考虑使用 imageBase64 或 imageUrl，二选一
+        const ocrParams = {};
+        if (imageBase64) {
+            ocrParams.ImageBase64 = imageBase64;
+        }
+        if (imageUrl) {
+            ocrParams.ImageUrl = imageUrl;
+        }
+
+        // 使用通用印刷体识别,也可根据实际情况使用其他OCR接口,比如：GeneralAccurateOCR
+        // https://cloud.tencent.com/document/api/866/33526
+        console.log('[OCR Resume] OCR params:', ocrParams);
+        const ocrResult = await ocrClient.GeneralBasicOCR(ocrParams);
+        console.log('[OCR Resume] OCR result:', JSON.stringify(ocrResult, null, 2));
+
+        // 4. 提取OCR文本
+        // GeneralBasicOCR返回TextDetections的数组，每项有DetectedText
+        const textDetections = ocrResult.TextDetections || [];
+        const extractedText = textDetections.map(item => item.DetectedText).join(' ');
+        console.log('[OCR Resume] Extracted Text:', extractedText);
+
+        // 5. 调用青问 QWEN 接口
+        //    你已有 /chat/completions 代理接口，这里通过 axios 调用本地接口即可
+        //    下方示例：我们把 OCR 文本发给 QWEN 并让它输出一个“简历格式”。
+        const messages = [
+            {
+                role: 'system',
+                content: `你是一个资深的简历生成助手，请将用户提供的文本整理为一个标准的简历信息。`
+            },
+            {
+                role: 'user',
+                content: `以下是从图片OCR提取的文本片段，请你根据这些信息，填充到下列简历模板中。如果信息缺失，可以留空。
+                
+【简历模板】
+姓名: 
+电话: 
+邮箱: 
+工作经历: 
+教育经历: 
+技能专长: 
+自我评价:
+                
+【用户文本】:
+${extractedText}
+`
+            }
+        ];
+        const response = await axios.post(
+            'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+            {
+                model: 'qwen-plus',
+                messages,
+                temperature: 0.7
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+                }
+            }
+        );
+        
+        console.log('[GPT Response] 成功接收响应:', response.data);
+
+        return res.json({
+            code: 20020,
+            data: {
+                ocrText: extractedText,
+                resume: response.data
+            }
+        });
+
+    } catch (err) {
+        console.error('[OCR Resume] Error:', err);
+        return res.status(500).json({
+            code: 50020,
+            message: 'OCR简历生成失败',
+            error: err.message
+        });
+    }
+});
 
 // 核心截图逻辑
 async function takeScreenshot(type, id, color, token) {

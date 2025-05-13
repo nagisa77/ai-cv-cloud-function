@@ -19,15 +19,16 @@ const cos = new COS({
     SecretKey: process.env.COS_SECRET_KEY
 });
 
-// 文件上传配置
+// 文件上传配置（仅在 fileFilter 部分增加对 PDF 的支持）
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
     fileFilter: (req, file, cb) => {
-        if (file.mimetype.startsWith('image/')) {
+        // 增加对 PDF 的判断
+        if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
             cb(null, true);
         } else {
-            cb(new Error('仅支持图片格式（JPEG/PNG/GIF等）'), false);
+            cb(new Error('仅支持图片或PDF格式'), false);
         }
     }
 });
@@ -66,7 +67,7 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
         let imageUrl = null;
 
         if (req.file) {
-            // 用户通过 multipart/form-data 上传了图片
+            // 用户通过 multipart/form-data 上传了文件
             console.log('[OCR Resume] Received an uploaded file.');
             imageBase64 = req.file.buffer.toString('base64');
         } else if (req.body.url) {
@@ -113,7 +114,10 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
         });
 
         // 4. 组装OCR请求参数
-        const ocrParams = {};
+        const ocrParams = {
+            IsPdf: true,
+            EnableMultiplePage: true 
+        };
         if (imageBase64) {
             ocrParams.ImageBase64 = imageBase64;
         }
@@ -133,7 +137,6 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
         console.log('[OCR Resume] Extracted Text:', extractedText);
 
         // 6. 构造给 QWEN 的消息
-        //    将自定义的 “简历内容 (resume)”、“简历模板 (resumeTemplate)”、“简历模板描述 (resumeTemplateDescription)” 与 OCR 内容合并
         const messages = [
             {
                 role: 'system',
@@ -160,7 +163,6 @@ ${extractedText}
         ];
 
         // 7. 调用青问 (QWEN) 接口
-        //    假设你有一个本地代理或直接调用阿里云 dashscope
         const response = await axios.post(
             'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
             {

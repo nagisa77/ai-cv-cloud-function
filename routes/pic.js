@@ -65,15 +65,18 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
         // 1. 获取图片来源（本地上传 或 远程URL）
         let imageBase64 = null;
         let imageUrl = null;
+        let isPdf = false;
 
         if (req.file) {
             // 用户通过 multipart/form-data 上传了文件
             console.log('[OCR Resume] Received an uploaded file.');
             imageBase64 = req.file.buffer.toString('base64');
+            isPdf = req.file.mimetype === 'application/pdf';
         } else if (req.body.url) {
             // 用户在 JSON body 中提供了图片URL
             console.log('[OCR Resume] Received an image URL:', req.body.url);
             imageUrl = req.body.url;
+            isPdf = req.body.url.endsWith('.pdf');
         } else {
             // 都没提供
             return res.status(400).json({
@@ -113,26 +116,49 @@ router.post('/ocr-resume', upload.single('image'), async (req, res) => {
             },
         });
 
-        // 4. 组装OCR请求参数
-        const ocrParams = {
-            IsPdf: true,
-            EnableMultiplePage: true 
-        };
-        if (imageBase64) {
-            ocrParams.ImageBase64 = imageBase64;
-        }
-        if (imageUrl) {
-            ocrParams.ImageUrl = imageUrl;
+        // ---------- 4. 调用 OCR 并提取文本 ----------
+        let textDetections = [];
+
+        if (isPdf) {
+            // —— PDF：先认首页，拿到总页数 —— //
+            const firstParams = {
+                IsPdf: true,
+                PdfPageNumber: 1,
+                ImageUrl: imageUrl,        // 此时 PDF 必有 URL
+            };
+            console.log('[OCR Resume] OCR params, page 1:', firstParams);
+            const firstRes = await ocrClient.GeneralBasicOCR(firstParams);
+            console.log('[OCR Resume] OCR result page 1:', JSON.stringify(firstRes, null, 2));
+
+            textDetections = textDetections.concat(firstRes.TextDetections || []);
+            const totalPages = firstRes.PdfPageSize || 1;
+
+            // —— 其余页 —— //
+            for (let page = 2; page <= totalPages; page++) {
+                const pageParams = {
+                    IsPdf: true,
+                    PdfPageNumber: page,
+                    ImageUrl: imageUrl,
+                };
+                console.log(`[OCR Resume] OCR params, page ${page}:`, pageParams);
+                const pageRes = await ocrClient.GeneralBasicOCR(pageParams);
+                console.log(`[OCR Resume] OCR result page ${page}:`, JSON.stringify(pageRes, null, 2));
+                textDetections = textDetections.concat(pageRes.TextDetections || []);
+            }
+
+        } else {
+            // —— 图片：一次即可 —— //
+            const imgParams = imageBase64
+                ? { ImageBase64: imageBase64 }
+                : { ImageUrl: imageUrl };
+
+            console.log('[OCR Resume] OCR params (image):', imgParams);
+            const imgRes = await ocrClient.GeneralBasicOCR(imgParams);
+            console.log('[OCR Resume] OCR result (image):', JSON.stringify(imgRes, null, 2));
+            textDetections = imgRes.TextDetections || [];
         }
 
-        // 使用通用印刷体识别
-        // https://cloud.tencent.com/document/api/866/33526
-        console.log('[OCR Resume] OCR params:', ocrParams);
-        const ocrResult = await ocrClient.GeneralBasicOCR(ocrParams);
-        console.log('[OCR Resume] OCR result:', JSON.stringify(ocrResult, null, 2));
-
-        // 5. 提取OCR文本
-        const textDetections = ocrResult.TextDetections || [];
+        // ---------- 5. 整理提取文本 ----------
         const extractedText = textDetections.map(item => item.DetectedText).join(' ');
         console.log('[OCR Resume] Extracted Text:', extractedText);
 
@@ -219,10 +245,10 @@ async function takeScreenshot(type, id, color, token) {
 
         const element = await page.waitForSelector('.cv-page', { timeout: 30000 });
         const boundingBox = await element.boundingBox();
-        
-        let screenshotBuffer = await page.screenshot({ 
-            type: 'png', 
-            clip: boundingBox 
+
+        let screenshotBuffer = await page.screenshot({
+            type: 'png',
+            clip: boundingBox
         });
 
         // 确保 screenshotBuffer 一定是 Buffer
@@ -257,7 +283,7 @@ async function takeScreenshot(type, id, color, token) {
 const validateResumeOwnership = (req, res, next) => {
     const userId = req.user.user_id;
     const { resumeId } = req.body;
-    
+
     if (!resumeId) {
         return res.status(400).json({ code: 40002, message: 'resumeId is required in request body' });
     }
@@ -297,9 +323,9 @@ router.post('/scf-screenshot', validateResumeOwnership, async (req, res) => {
                 return res.status(500).json({ code: 50014, message: 'Failed to store screenshot url' });
             }
             console.log(`[SCF Screenshot] Successfully stored screenshotUrl, resumeId=${resumeId}`);
-            return res.json({ 
-                code: 20009, 
-                data: { resumeId, screenshotUrl } 
+            return res.json({
+                code: 20009,
+                data: { resumeId, screenshotUrl }
             });
         });
     } catch (error) {

@@ -235,15 +235,15 @@ async function takeScreenshot(type, id, color, token) {
         // 将用户的 JWT 传给前端路由（如需调用受限接口）
         await page.setExtraHTTPHeaders({ 'Authorization': token });
 
-        await page.setViewport({ width: 1602, height: 917, deviceScaleFactor: 2 });
+        await page.setViewport({ width: 1300, height: 917, deviceScaleFactor: 2 });
 
         // 这里使用你的前端简历预览URL
         // 例如 http://your-domain.com/#/create-resume/${type}/${id}/${color}
         // Demo中用一个示例IP代替，按需修改
-        const url = `http://207.180.225.219:8080/#/create-resume/${type}/${id}/${color}`;
+        const url = `http://www.jianlijun.com/#/create-resume/${type}/${id}/${color}`;
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        const element = await page.waitForSelector('.cv-page', { timeout: 30000 });
+        const element = await page.waitForSelector('.cv-page-content', { timeout: 30000 });
         const boundingBox = await element.boundingBox();
 
         let screenshotBuffer = await page.screenshot({

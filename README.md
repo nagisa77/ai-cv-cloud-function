@@ -52,9 +52,12 @@
 
 - `POST /user/resumes` 创建新简历。成功后将异步触发截图并保存至 COS。
 - `PATCH /user/resumes/:resume_id` 更新简历信息（名称、模板类型、颜色）。如模板变更会重新截图。
-- `GET /user/resumes` 获取当前用户的简历列表。
+- `GET /user/resumes` 获取当前用户的简历列表（使用 `?trash=true` 查看回收站）。
 - `GET /user/resumes/:resume_id` 获取某份简历的详细信息。
-- `DELETE /user/resumes/:resume_id` 删除简历及其关联数据。
+- `POST /user/resumes/:resume_id/recycle` 将简历移入回收站。
+- `POST /user/resumes/:resume_id/restore` 从回收站恢复简历。
+- `DELETE /user/resumes/:resume_id` 彻底删除简历及其关联数据（通常在回收站中调
+用）。
 - `GET|POST|DELETE /user/resumes/:resume_id/meta_data` 管理简历的元数据（JSON 格式）。
 - `GET|POST /user/resumes/:resume_id/chat` 获取或保存与简历相关的聊天记录。
 

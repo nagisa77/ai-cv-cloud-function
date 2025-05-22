@@ -63,7 +63,8 @@ router.post('/resumes', (req, res) => {
             'name', name || defaultName,
             'createdAt', createdAt.toISOString(),
             'templateType', templateType,
-            'color', color
+            'color', color,
+            'isDeleted', 0
         ],
         (err) => {
             if (err) {
@@ -195,7 +196,8 @@ router.patch('/resumes/:resume_id', validateResume, (req, res) => {
 // 获取简历列表
 router.get('/resumes', (req, res) => {
     const userId = req.user.user_id;
-    console.log(`[获取简历列表] 开始: 用户ID=${userId}`);
+    const showTrash = req.query.trash === 'true';
+    console.log(`[获取简历列表] 开始: 用户ID=${userId}, trash=${showTrash}`);
 
     client.smembers(`user:${userId}:resumes`, (err, resumeIds) => {
         if (err) {
@@ -220,18 +222,18 @@ router.get('/resumes', (req, res) => {
             }
 
             // 构造简历数组并排序
-            const resumes = results.map((data, index) => ({
+            let resumes = results.map((data, index) => ({
                 resumeId: resumeIds[index],
                 name: data.name,
                 createdAt: data.createdAt,
                 templateType: data.templateType,
                 color: data.color || null,
-                screenshotUrl: data.screenshotUrl || null
-            })).sort((a, b) => {
-                const timeA = new Date(a.createdAt).getTime();
-                const timeB = new Date(b.createdAt).getTime();
-                return timeB - timeA; // 降序排列（最新在前）
-            });
+                screenshotUrl: data.screenshotUrl || null,
+                isDeleted: data.isDeleted === '1'
+            }));
+
+            resumes = resumes.filter(r => showTrash ? r.isDeleted : !r.isDeleted)
+                .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
             console.log(`[获取简历列表] 成功: 用户ID=${userId}, 返回简历数量=${resumes.length}`);
             res.json({ code: 20002, data: resumes });
@@ -260,7 +262,8 @@ router.get('/resumes/:resume_id', validateResume, (req, res) => {
                 createdAt: resume.createdAt,
                 userId: resume.userId,
                 templateType: resume.templateType,
-                color: resume.color || null
+                color: resume.color || null,
+                isDeleted: resume.isDeleted === '1'
             }
         });
     });
@@ -406,6 +409,38 @@ router.route('/resumes/:resume_id/chat')
             res.status(201).json({ code: 20103, data: req.body });
         });
     });
+
+// 将简历移入回收站
+router.post('/resumes/:resume_id/recycle', validateResume, (req, res) => {
+    const resumeId = req.params.resume_id;
+    const userId = req.user.user_id;
+    console.log(`[回收简历] 开始: 用户ID=${userId}, 简历ID=${resumeId}`);
+
+    client.hset(`resume:${resumeId}`, 'isDeleted', 1, (err) => {
+        if (err) {
+            console.error(`[回收简历] 失败: 简历ID=${resumeId}, 错误=${err.message}`);
+            return res.status(500).json({ code: 50011, message: '移动到回收站失败' });
+        }
+        console.log(`[回收简历] 成功: 简历ID=${resumeId}`);
+        res.json({ code: 20007, message: '已移入回收站' });
+    });
+});
+
+// 从回收站恢复简历
+router.post('/resumes/:resume_id/restore', validateResume, (req, res) => {
+    const resumeId = req.params.resume_id;
+    const userId = req.user.user_id;
+    console.log(`[恢复简历] 开始: 用户ID=${userId}, 简历ID=${resumeId}`);
+
+    client.hset(`resume:${resumeId}`, 'isDeleted', 0, (err) => {
+        if (err) {
+            console.error(`[恢复简历] 失败: 简历ID=${resumeId}, 错误=${err.message}`);
+            return res.status(500).json({ code: 50011, message: '恢复失败' });
+        }
+        console.log(`[恢复简历] 成功: 简历ID=${resumeId}`);
+        res.json({ code: 20007, message: '已恢复简历' });
+    });
+});
 
 // 删除简历接口
 router.delete('/resumes/:resume_id', validateResume, (req, res) => {

@@ -175,7 +175,7 @@ router.post('/captcha/login', validateContact, async (req, res) => {
 
         // 生成 JWT Token
         const payload = { user_id: userId, contact };
-        const token = jwt.sign(payload, secretKey, { expiresIn: '1d' });
+        const token = jwt.sign(payload, secretKey, { expiresIn: '7d' });
 
         // 返回登录结果
         res.json({

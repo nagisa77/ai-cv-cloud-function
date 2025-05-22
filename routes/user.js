@@ -442,6 +442,44 @@ router.post('/resumes/:resume_id/restore', validateResume, (req, res) => {
     });
 });
 
+// 批量将简历移入回收站
+router.post('/resumes/batch/recycle', (req, res) => {
+    const userId = req.user.user_id;
+    const { resumeIds } = req.body;
+
+    if (!Array.isArray(resumeIds) || resumeIds.length === 0) {
+        return res.status(400).json({ code: 40001, message: '请提供 resumeIds 数组' });
+    }
+
+    const pipeline = client.multi();
+    resumeIds.forEach(id => pipeline.hget(`resume:${id}`, 'userId'));
+
+    pipeline.exec((err, owners) => {
+        if (err) {
+            console.error(`[批量回收] 用户ID=${userId}, 错误=${err.message}`);
+            return res.status(500).json({ code: 50011, message: '移动到回收站失败' });
+        }
+
+        const validIds = resumeIds.filter((id, index) => owners[index] === userId);
+
+        if (validIds.length === 0) {
+            return res.status(403).json({ code: 40301, message: '无权限操作或简历不存在' });
+        }
+
+        const multi = client.multi();
+        validIds.forEach(id => multi.hset(`resume:${id}`, 'isDeleted', 1));
+
+        multi.exec(err2 => {
+            if (err2) {
+                console.error(`[批量回收] 失败: 用户ID=${userId}, 错误=${err2.message}`);
+                return res.status(500).json({ code: 50011, message: '移动到回收站失败' });
+            }
+            console.log(`[批量回收] 成功: 用户ID=${userId}, 数量=${validIds.length}`);
+            res.json({ code: 20007, data: { count: validIds.length } });
+        });
+    });
+});
+
 // 删除简历接口
 router.delete('/resumes/:resume_id', validateResume, (req, res) => {
     const resumeId = req.params.resume_id;
@@ -463,6 +501,49 @@ router.delete('/resumes/:resume_id', validateResume, (req, res) => {
         
         console.log(`[删除简历] 成功: 用户ID=${userId}, 简历ID=${resumeId}, 操作结果=${JSON.stringify(results)}`);
         res.json({ code: 20007, message: '简历已删除' });
+    });
+});
+
+// 批量彻底删除简历
+router.delete('/resumes/batch', (req, res) => {
+    const userId = req.user.user_id;
+    const { resumeIds } = req.body;
+
+    if (!Array.isArray(resumeIds) || resumeIds.length === 0) {
+        return res.status(400).json({ code: 40001, message: '请提供 resumeIds 数组' });
+    }
+
+    const pipeline = client.multi();
+    resumeIds.forEach(id => pipeline.hget(`resume:${id}`, 'userId'));
+
+    pipeline.exec((err, owners) => {
+        if (err) {
+            console.error(`[批量删除] 用户ID=${userId}, 错误=${err.message}`);
+            return res.status(500).json({ code: 50011, message: '删除失败' });
+        }
+
+        const validIds = resumeIds.filter((id, index) => owners[index] === userId);
+
+        if (validIds.length === 0) {
+            return res.status(403).json({ code: 40301, message: '无权限操作或简历不存在' });
+        }
+
+        const multi = client.multi();
+        validIds.forEach(id => {
+            multi.del(`resume:${id}`);
+            multi.srem(`user:${userId}:resumes`, id);
+            multi.del(`user_data:${userId}:${id}`);
+        });
+
+        multi.exec(err2 => {
+            if (err2) {
+                console.error(`[批量删除] 失败: 用户ID=${userId}, 错误=${err2.message}`);
+                return res.status(500).json({ code: 50011, message: '删除失败' });
+            }
+
+            console.log(`[批量删除] 成功: 用户ID=${userId}, 数量=${validIds.length}`);
+            res.json({ code: 20007, data: { count: validIds.length } });
+        });
     });
 });
 

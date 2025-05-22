@@ -58,6 +58,8 @@
 - `POST /user/resumes/:resume_id/restore` 从回收站恢复简历。
 - `DELETE /user/resumes/:resume_id` 彻底删除简历及其关联数据（通常在回收站中调
 用）。
+- `POST /user/resumes/batch/recycle` 批量将多个简历移入回收站。
+- `DELETE /user/resumes/batch` 批量彻底删除简历及其关联数据。
 - `GET|POST|DELETE /user/resumes/:resume_id/meta_data` 管理简历的元数据（JSON 格式）。
 - `GET|POST /user/resumes/:resume_id/chat` 获取或保存与简历相关的聊天记录。
 

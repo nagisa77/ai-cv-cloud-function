@@ -28,7 +28,7 @@
    ```bash
    npm install
    ```
-2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 Redis、COS、Resend、OpenAI 以及 JWT 密钥等：
+2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 Redis、COS、Resend、OpenAI、SCF Endpoint、腾讯 OCR 以及 JWT 密钥等：
    ```bash
    cp .env.example .env
    # 修改 .env 填入真实配置

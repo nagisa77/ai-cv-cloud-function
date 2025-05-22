@@ -443,7 +443,7 @@ router.post('/resumes/:resume_id/restore', validateResume, (req, res) => {
 });
 
 // 批量将简历移入回收站
-router.post('/resumes/batch/recycle', (req, res) => {
+router.post('/resumes-batch/recycle', (req, res) => {
     const userId = req.user.user_id;
     const { resumeIds } = req.body;
 
@@ -505,7 +505,7 @@ router.delete('/resumes/:resume_id', validateResume, (req, res) => {
 });
 
 // 批量彻底删除简历
-router.delete('/resumes/batch', (req, res) => {
+router.delete('/resumes-batch', (req, res) => {
     const userId = req.user.user_id;
     const { resumeIds } = req.body;
 

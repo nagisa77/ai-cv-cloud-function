@@ -243,37 +243,34 @@ async function takeScreenshot(type, id, color, token) {
         const url = `http://www.jianlijun.com/#/create-resume/${type}/${id}/${color}`;
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-        const element = await page.waitForSelector('.cv-page-content', { timeout: 30000 });
-        const boundingBox = await element.boundingBox();
+        // 等待最后一页渲染完成
+        await page.waitForSelector('.cv-page-content:last-child', { timeout: 30000 });
 
-        let screenshotBuffer = await page.screenshot({
-            type: 'png',
-            clip: boundingBox
-        });
+        const pages = await page.$$('.cv-page-content');
+        if (!pages.length) throw new Error('未找到任何 .cv-page-content');
 
-        // 确保 screenshotBuffer 一定是 Buffer
-        if (!Buffer.isBuffer(screenshotBuffer)) {
-            screenshotBuffer = Buffer.from(
-                screenshotBuffer.buffer || screenshotBuffer,
-                screenshotBuffer.byteOffset,
-                screenshotBuffer.byteLength
+        const screenshotUrls = [];
+
+        for (const [idx, el] of pages.entries()) {
+            const buffer = await el.screenshot({ type: 'png' });
+
+            const cosKey = `screenshots/${id}_page${idx + 1}.png`;
+            await cos.putObject({
+                Bucket: process.env.COS_BUCKET,
+                Region: process.env.COS_REGION,
+                Key: cosKey,
+                Body: buffer,
+                ACL: 'public-read',
+                ContentType: 'image/png'
+            });
+
+            screenshotUrls.push(
+                `https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`
             );
         }
 
-        // 上传到 COS
-        const cosKey = `screenshots/${id}.png`;
-        await cos.putObject({
-            Bucket: process.env.COS_BUCKET,
-            Region: process.env.COS_REGION,
-            Key: cosKey,
-            Body: screenshotBuffer,
-            ACL: 'public-read',
-            ContentType: 'image/png'
-        });
-
-        const finalUrl = `https://${process.env.COS_BUCKET}.cos.${process.env.COS_REGION}.myqcloud.com/${cosKey}`;
-        console.log(`[takeScreenshot] Success: resumeId=${id}, screenshotUrl=${finalUrl}`);
-        return finalUrl;
+        console.log(`[takeScreenshot] Success: resumeId=${id}, pages=${screenshotUrls.length}`);
+        return screenshotUrls.length === 1 ? screenshotUrls[0] : screenshotUrls;
     } finally {
         if (browser) await browser.close();
     }
@@ -314,20 +311,30 @@ router.post('/scf-screenshot', validateResumeOwnership, async (req, res) => {
         console.log(`[SCF Screenshot] Start: resumeId=${resumeId}, templateType=${templateType}, color=${color}`);
 
         // 1. 执行截图
-        const screenshotUrl = await takeScreenshot(templateType, resumeId, color, req.headers.authorization);
+        const screenshotResult = await takeScreenshot(templateType, resumeId, color, req.headers.authorization);
 
-        // 2. 将 screenshotUrl 存入 Redis
-        client.hset(`resume:${resumeId}`, 'screenshotUrl', screenshotUrl, (err) => {
-            if (err) {
-                console.error(`[SCF Screenshot] Failed to store screenshotUrl: ${err.message}`);
-                return res.status(500).json({ code: 50014, message: 'Failed to store screenshot url' });
+        const screenshotUrls = Array.isArray(screenshotResult) ? screenshotResult : [screenshotResult];
+        const firstUrl = screenshotUrls[0];
+
+        // 2. 将截图链接存入 Redis
+        client.hmset(
+            `resume:${resumeId}`,
+            {
+                screenshotUrl: firstUrl,
+                screenshotUrls: JSON.stringify(screenshotUrls)
+            },
+            (err) => {
+                if (err) {
+                    console.error(`[SCF Screenshot] Failed to store screenshot urls: ${err.message}`);
+                    return res.status(500).json({ code: 50014, message: 'Failed to store screenshot url' });
+                }
+                console.log(`[SCF Screenshot] Successfully stored screenshot urls, resumeId=${resumeId}`);
+                return res.json({
+                    code: 20009,
+                    data: { resumeId, screenshotUrls }
+                });
             }
-            console.log(`[SCF Screenshot] Successfully stored screenshotUrl, resumeId=${resumeId}`);
-            return res.json({
-                code: 20009,
-                data: { resumeId, screenshotUrl }
-            });
-        });
+        );
     } catch (error) {
         console.error(`[SCF Screenshot] Error: ${error.message}`);
         res.status(500).json({ code: 50015, message: 'Screenshot failed', error: error.message });

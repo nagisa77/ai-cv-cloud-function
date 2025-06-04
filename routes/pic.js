@@ -252,7 +252,20 @@ async function takeScreenshot(type, id, color, token) {
         const screenshotUrls = [];
 
         for (const [idx, el] of pages.entries()) {
-            const buffer = await el.screenshot({ type: 'png' });
+            // const boundingBox = await el.boundingBox();
+            let buffer = await el.screenshot({
+                type: 'png',
+                // clip: boundingBox
+            });
+
+            // 确保 buffer 一定是 Buffer
+            if (!Buffer.isBuffer(buffer)) {
+                buffer = Buffer.from(
+                    buffer.buffer || buffer,
+                    buffer.byteOffset,
+                    buffer.byteLength
+                );
+            }
 
             const cosKey = `screenshots/${id}_page${idx + 1}.png`;
             await cos.putObject({
@@ -269,7 +282,7 @@ async function takeScreenshot(type, id, color, token) {
             );
         }
 
-        console.log(`[takeScreenshot] Success: resumeId=${id}, pages=${screenshotUrls.length}`);
+        console.log(`[takeScreenshot] Success: resumeId=${id}, pages=${screenshotUrls.length}, urls=${JSON.stringify(screenshotUrls)}`);
         return screenshotUrls.length === 1 ? screenshotUrls[0] : screenshotUrls;
     } finally {
         if (browser) await browser.close();

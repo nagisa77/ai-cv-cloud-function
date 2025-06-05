@@ -33,7 +33,7 @@
   cp .env.example .env
   # 修改 .env 填入真实配置
   ```
-   其中 `OPENAI_MODEL` 用于指定要使用的大模型名称，默认值为 `deepseek-v3-0324`。若值包含 `qwen` 将自动使用 DashScope 接口。
+   其中 `OPENAI_MODEL` 用于指定要使用的大模型名称，默认值为 `deepseek-chat`。若值包含 `qwen` 将自动使用 DashScope 接口。
 3. 本地启动：
    ```bash
    node app.js

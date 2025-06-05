@@ -6,7 +6,7 @@ const axios = require('axios');
 // 代理GPT请求的接口
 router.post('/completions', async (req, res) => {
   try {
-    const defaultModel = process.env.OPENAI_MODEL || 'deepseek-v3-0324';
+    const defaultModel = process.env.OPENAI_MODEL || 'deepseek-chat';
     const { messages, model = defaultModel, temperature = 0.7 } = req.body;
     
     console.log('[GPT Request] 收到请求:', { messages, model, temperature });

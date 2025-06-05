@@ -189,7 +189,7 @@ ${extractedText}
         ]
 
         // 7. 调用大模型接口，根据模型切换 API 地址
-        const usedModel = process.env.OPENAI_MODEL || 'deepseek-v3-0324';
+        const usedModel = process.env.OPENAI_MODEL || 'deepseek-chat';
         const baseUrl = usedModel.toLowerCase().includes('qwen')
             ? 'https://dashscope.aliyuncs.com/compatible-mode'
             : 'https://api.deepseek.com';

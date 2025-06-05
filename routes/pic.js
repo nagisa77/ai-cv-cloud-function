@@ -188,11 +188,15 @@ ${extractedText}
             }
         ]
 
-        // 7. 调用青问 (QWEN) 接口
+        // 7. 调用大模型接口，根据模型切换 API 地址
+        const usedModel = process.env.OPENAI_MODEL || 'deepseek-v3-0324';
+        const baseUrl = usedModel.toLowerCase().includes('qwen')
+            ? 'https://dashscope.aliyuncs.com/compatible-mode'
+            : 'https://api.deepseek.com';
         const response = await axios.post(
-            'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions',
+            `${baseUrl}/v1/chat/completions`,
             {
-                model: 'qwen-plus',
+                model: usedModel,
                 messages,
                 temperature: 0.7
             },

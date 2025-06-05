@@ -4,7 +4,7 @@
 
 - 验证码登录与用户认证
 - 简历的 CRUD 管理及数据存储
-- 调用青问 (QWEN) 模型的聊天接口
+- 调用大模型聊天接口（默认 DeepSeek V3-0324）
 - 上传图片或 PDF 文件并经 OCR 识别后生成结构化简历
 - 生成并保存简历截图至腾讯云 COS
 
@@ -17,7 +17,7 @@
   - `auth.js`：验证码发送与登录验证。
   - `user.js`：简历管理、元数据和聊天记录接口。
   - `pic.js`：图片上传、OCR 简历解析及截图逻辑。
-  - `chat.js`：代理青问兼容模式的聊天接口。
+  - `chat.js`：代理大模型聊天接口（可切换 DeepSeek 或 QWEN）。
 - `utils/redis.js`：Redis 客户端封装，用于数据缓存及验证码存储。
 - `scf_bootstrap`：在 SCF 环境中启动服务的脚本。
 - `.env.example`：环境变量示例文件。
@@ -28,11 +28,12 @@
    ```bash
    npm install
    ```
-2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 Redis、COS、Resend、OpenAI、SCF Endpoint、腾讯 OCR 以及 JWT 密钥等：
+2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 Redis、COS、Resend、模型名称、OpenAI 密钥、SCF Endpoint、腾讯 OCR 以及 JWT 密钥等：
    ```bash
-   cp .env.example .env
-   # 修改 .env 填入真实配置
-   ```
+  cp .env.example .env
+  # 修改 .env 填入真实配置
+  ```
+   其中 `OPENAI_MODEL` 用于指定要使用的大模型名称，默认值为 `deepseek-v3-0324`。若值包含 `qwen` 将自动使用 DashScope 接口。
 3. 本地启动：
    ```bash
    node app.js
@@ -66,12 +67,12 @@
 ### 3. 图片及 OCR `/pic`
 
 - `POST /pic` 上传图片文件到 COS，返回公开访问的 URL。
-- `POST /pic/ocr-resume` 接收上传的图片或 PDF（或远程 URL），经过腾讯云 OCR 识别并结合模板调用 QWEN 模型，生成结构化简历数据。
+- `POST /pic/ocr-resume` 接收上传的图片或 PDF（或远程 URL），经过腾讯云 OCR 识别并结合模板调用配置的大模型生成结构化简历数据。
 - `POST /pic/scf-screenshot` 根据简历 ID、模板类型和颜色在无头浏览器中截图，并将图片存储到 COS（内部使用，可在创建或更新简历时自动调用）。
 
 ### 4. 聊天接口 `/chat`
 
-- `POST /chat/completions` 兼容 OpenAI 格式，代理青问模型进行对话。
+- `POST /chat/completions` 兼容 OpenAI 格式，根据模型名称代理 DeepSeek 或 QWEN 进行对话。
 
 ## 部署到 Serverless
 

@@ -19,7 +19,8 @@ const router = express.Router();
 const client = require('../utils/redis');
 const { Resend } = require('resend');
 const jwt = require('jsonwebtoken');
-const { v4: uuidv4 } = require('uuid'); 
+const { v4: uuidv4 } = require('uuid');
+const admin = require('../utils/firebaseAdmin');
 // const resend = new Resend(process.env.RESEND_API_KEY, {
 //     fetch: require('node-fetch')
 // });
@@ -200,6 +201,67 @@ router.post('/captcha/login', validateContact, async (req, res) => {
             message: '登录过程发生错误',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
         });
+    }
+});
+
+// Google 登录接口
+router.post('/google', async (req, res) => {
+    const { idToken } = req.body;
+    if (!idToken) {
+        return res.status(400).json({ code: 40005, message: '缺少 idToken' });
+    }
+
+    try {
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        const { uid, email } = decoded;
+
+        let userId = await new Promise((resolve, reject) => {
+            client.hget('firebase_uid', uid, (err, data) => {
+                if (err) reject(err);
+                else resolve(data);
+            });
+        });
+
+        if (!userId && email) {
+            userId = await new Promise((resolve, reject) => {
+                client.hget('user_contacts', email, (err, data) => {
+                    if (err) reject(err);
+                    else resolve(data);
+                });
+            });
+        }
+
+        if (!userId) {
+            userId = uuidv4();
+        }
+
+        await new Promise((resolve, reject) => {
+            client.hset('firebase_uid', uid, userId, (err) => {
+                if (err) reject(err); else resolve();
+            });
+        });
+
+        if (email) {
+            await new Promise((resolve, reject) => {
+                client.hset('user_contacts', email, userId, (err) => {
+                    if (err) reject(err); else resolve();
+                });
+            });
+        }
+
+        const token = jwt.sign({ user_id: userId, contact: email }, secretKey, { expiresIn: '7d' });
+
+        res.json({
+            code: 200,
+            message: '登录成功',
+            data: {
+                token,
+                user: { user_id: userId, contact: email, provider: 'google', firebase_uid: uid }
+            }
+        });
+    } catch (err) {
+        console.error('[Google Login Error]', err);
+        res.status(401).json({ code: 40103, message: '无效的 Google 身份凭证' });
     }
 });
 

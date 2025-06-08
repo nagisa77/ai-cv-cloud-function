@@ -386,7 +386,7 @@ router.route('/resumes/:resume_id/chat')
                 return res.status(500).json({ code: 50009, message: '获取失败' });
             }
             
-            const chatData = data ? JSON.parse(data) : [];
+            const chatData = data ? JSON.parse(data) : {};
             console.log(`[获取聊天记录] 成功: 简历ID=${resumeId}, 消息数量=${chatData.length || 0}`);
             res.json({ code: 20006, data: chatData });
         });
@@ -394,9 +394,7 @@ router.route('/resumes/:resume_id/chat')
     .post(validateResume, (req, res) => {
         const userId = req.user.user_id;
         const resumeId = req.params.resume_id;
-        const messageCount = req.body.messages ? req.body.messages.length : 0;
-        
-        console.log(`[保存聊天记录] 开始: 用户ID=${userId}, 简历ID=${resumeId}, 消息数量=${messageCount}`);
+        console.log(`[保存聊天记录] 开始: 用户ID=${userId}, 简历ID=${resumeId}`);
         
         const value = JSON.stringify(req.body);
         client.hset(`user_data:${userId}:${resumeId}`, 'chat', value, (err) => {

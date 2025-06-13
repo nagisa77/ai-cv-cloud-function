@@ -11,8 +11,8 @@ router.get('/meta', async (req, res) => {
 
     rows.forEach(row => {
       try {
-        JSON.parse(row.platform || '[]').forEach(p => platformSet.add(p));
-        JSON.parse(row.categories || '[]').forEach(c => categorySet.add(c));
+        (Array.isArray(row.platform) ? row.platform : []).forEach(platform => platformSet.add(platform));
+        (Array.isArray(row.categories) ? row.categories : []).forEach(category => categorySet.add(category));
       } catch (e) {
         // ignore parse errors
       }
@@ -28,18 +28,17 @@ router.get('/meta', async (req, res) => {
 // 接口1: 获取面试题列表
 router.get('/questions', async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM interview_question');
     const { categories, platform } = req.query;
 
     const categoryFilter = categories ? categories.split(',').map(s => s.trim()).filter(Boolean) : null;
     const platformFilter = platform ? platform.split(',').map(s => s.trim()).filter(Boolean) : null;
 
+    const [rows] = await pool.query('SELECT * FROM interview_question');
+
     let result = [];
 
     rows.forEach(row => {
       try {
-        row.platform = JSON.parse(row.platform || '[]');
-        row.categories = JSON.parse(row.categories || '[]');
         row.sources = JSON.parse(row.sources || '[]');
         row.sourcesCount = Array.isArray(row.sources) ? row.sources.length : 0;
       } catch (e) {

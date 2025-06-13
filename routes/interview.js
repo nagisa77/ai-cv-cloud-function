@@ -77,4 +77,27 @@ router.get('/questions', async (req, res) => {
   }
 });
 
+// 接口2: 根据id获取单个面试题详情
+router.get('/questions/:id', async (req, res) => {
+  try {
+    const questionId = req.params.id;
+    const [rows] = await pool.query('SELECT * FROM interview_question WHERE id = ?', [questionId]);
+    if (rows.length === 0) {
+      return res.status(404).json({ code: 404, message: 'question not found' });
+    }
+
+    const question = rows[0];
+    try {
+      question.sources = JSON.parse(question.sources || '[]');
+    } catch (e) {
+      question.sources = [];
+    }
+
+    res.json({ code: 200, data: question });
+  } catch (err) {
+    console.error('[interview/question] error:', err);
+    res.status(500).json({ code: 500, message: 'database error' });
+  }
+});
+
 module.exports = router;

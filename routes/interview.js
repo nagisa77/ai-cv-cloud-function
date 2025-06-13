@@ -28,43 +28,49 @@ router.get('/meta', async (req, res) => {
 // 接口1: 获取面试题列表
 router.get('/questions', async (req, res) => {
   try {
-    const { categories, platform } = req.query;
+    const { categories, platform, page, pageSize } = req.query;
 
-    const categoryFilter = categories ? categories.split(',').map(s => s.trim()).filter(Boolean) : null;
-    const platformFilter = platform ? platform.split(',').map(s => s.trim()).filter(Boolean) : null;
+    const categoryFilter = categories ? categories.split(',').map(s => s.trim()).filter(Boolean) : [];
+    const platformFilter = platform ? platform.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    const [rows] = await pool.query('SELECT * FROM interview_question');
+    let sql = 'SELECT id, question, categories, platform, add_ts, JSON_LENGTH(sources) AS sourcesCount FROM interview_question';
+    const params = [];
+    const conditions = [];
 
-    let result = [];
-
-    rows.forEach(row => {
-      try {
-        row.sources = JSON.parse(row.sources || '[]');
-        row.sourcesCount = Array.isArray(row.sources) ? row.sources.length : 0;
-      } catch (e) {
-        row.sourcesCount = 0;
-      }
-
-      if (categoryFilter && !row.categories.some(c => categoryFilter.includes(c))) {
-        return;
-      }
-      if (platformFilter && !row.platform.some(p => platformFilter.includes(p))) {
-        return;
-      }
-      result.push(row);
-    });
-
-    result.sort((a, b) => b.sourcesCount - a.sourcesCount);
-
-    const page = parseInt(req.query.page, 10);
-    const pageSize = parseInt(req.query.pageSize, 10);
-    let pagedResult = result;
-    if (!isNaN(page) && !isNaN(pageSize) && page > 0 && pageSize > 0) {
-      const start = (page - 1) * pageSize;
-      pagedResult = result.slice(start, start + pageSize);
+    if (categoryFilter.length) {
+      conditions.push('(' + categoryFilter.map(() => 'JSON_CONTAINS(categories, JSON_QUOTE(?))').join(' OR ') + ')');
+      params.push(...categoryFilter);
     }
 
-    res.json({ code: 200, data: pagedResult });
+    if (platformFilter.length) {
+      conditions.push('(' + platformFilter.map(() => 'JSON_CONTAINS(platform, JSON_QUOTE(?))').join(' OR ') + ')');
+      params.push(...platformFilter);
+    }
+
+    if (conditions.length) {
+      sql += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    sql += ' ORDER BY JSON_LENGTH(sources) DESC';
+
+    const pageNum = parseInt(page, 10);
+    const sizeNum = parseInt(pageSize, 10);
+    if (!isNaN(pageNum) && !isNaN(sizeNum) && pageNum > 0 && sizeNum > 0) {
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(sizeNum, (pageNum - 1) * sizeNum);
+    }
+
+    // const [rows] = await pool.query(sql, params);
+
+    // rows.forEach(row => {
+    //   try {
+    //     row.sources = JSON.parse(row.sources || '[]');
+    //   } catch (e) {
+    //     row.sources = [];
+    //   }
+    // });
+
+    res.json({ code: 200, data: rows });
   } catch (err) {
     console.error('[interview/questions] error:', err);
     res.status(500).json({ code: 500, message: 'database error' });

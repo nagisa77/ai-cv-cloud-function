@@ -33,7 +33,7 @@ router.get('/questions', async (req, res) => {
     const categoryFilter = categories ? categories.split(',').map(s => s.trim()).filter(Boolean) : [];
     const platformFilter = platform ? platform.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-    let sql = 'SELECT *, JSON_LENGTH(sources) AS sourcesCount FROM interview_question';
+    let sql = 'SELECT id, question, categories, platform, add_ts, JSON_LENGTH(sources) AS sourcesCount FROM interview_question';
     const params = [];
     const conditions = [];
 
@@ -60,15 +60,15 @@ router.get('/questions', async (req, res) => {
       params.push(sizeNum, (pageNum - 1) * sizeNum);
     }
 
-    const [rows] = await pool.execute(sql, params);
+    // const [rows] = await pool.query(sql, params);
 
-    rows.forEach(row => {
-      try {
-        row.sources = JSON.parse(row.sources || '[]');
-      } catch (e) {
-        row.sources = [];
-      }
-    });
+    // rows.forEach(row => {
+    //   try {
+    //     row.sources = JSON.parse(row.sources || '[]');
+    //   } catch (e) {
+    //     row.sources = [];
+    //   }
+    // });
 
     res.json({ code: 200, data: rows });
   } catch (err) {

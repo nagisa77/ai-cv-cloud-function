@@ -15,6 +15,7 @@ const userRoutes = require('./routes/user');      // 用户数据模块
 const authRoutes = require('./routes/auth');      // 登录模块
 const { router: picRoutes, takeScreenshot } = require('./routes/pic');      // 图片上传模块
 const chatRoutes = require('./routes/chat');      // 聊天模块
+const interviewRoutes = require('./routes/interview');      // 面试题模块
 
 // ---------- 中间件配置 ----------
 // 配置 CORS（根据你的前端地址调整）
@@ -103,6 +104,7 @@ app.use(authMiddleware);
 app.use('/user', userRoutes);
 app.use('/pic', picRoutes);
 app.use('/chat', chatRoutes);
+app.use('/interview', interviewRoutes);
 
 // ---------- 全局错误处理 ----------
 app.use((err, req, res, next) => {

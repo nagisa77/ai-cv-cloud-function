@@ -78,6 +78,7 @@
 
 - `GET /interview/meta` 获取所有来源平台及分类列表。
 - `GET /interview/questions` 按来源数量排序返回面试题，可使用 `categories` 和 `platform` 查询参数过滤，支持 `page` 和 `pageSize` 分页查询（不传则返回全部）。
+- `GET /interview/questions/:id` 根据题目 ID 返回该题目的详细信息。
 
 ## 部署到 Serverless
 

@@ -74,6 +74,11 @@
 
 - `POST /chat/completions` 兼容 OpenAI 格式，根据模型名称代理 DeepSeek 或 QWEN 进行对话。
 
+### 5. 面试题接口 `/interview`
+
+- `GET /interview/meta` 获取所有来源平台及分类列表。
+- `GET /interview/questions` 按来源数量排序返回面试题，可使用 `categories` 和 `platform` 查询参数过滤，支持 `page` 和 `pageSize` 分页查询（不传则返回全部）。
+
 ## 部署到 Serverless
 
 项目默认在本地运行，但也可部署到腾讯云函数（SCF）。部署时需保证 `scf_bootstrap` 为可执行文件，并在函数入口设置为该脚本。同时需在环境变量中配置所有外部服务的密钥。

@@ -16,6 +16,7 @@
     "redis": "^3.1.2",
     "resend": "^4.1.2",
     "tencentcloud-sdk-nodejs": "^4.1.26",
-    "firebase-admin": "^13.4.0"
+    "firebase-admin": "^13.4.0",
+    "mysql2": "^3.9.7"
   }
 }

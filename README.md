@@ -1,6 +1,6 @@
 # AI 简历云函数服务
 
-该项目是一个基于 Node.js (Express) 的服务，设计用于在 Serverless 环境（如腾讯云 SCF）中运行，为简历生成和图片处理提供 API 支持。主要功能包括：
+该项目是一个基于 Node.js (Express) 的服务，设计用于在 Serverless 环境（如腾讯云 SCF）中运行，为简历生成和图片处理提供 API 支持。数据持久化迁移到了 MySQL，验证码仍保留在 Redis 中。主要功能包括：
 
 - 验证码登录与用户认证
 - 简历的 CRUD 管理及数据存储
@@ -17,9 +17,10 @@
   - `auth.js`：验证码发送与登录验证。
   - `user.js`：简历管理、元数据和聊天记录接口。
   - `pic.js`：图片上传、OCR 简历解析及截图逻辑。
-  - `chat.js`：代理大模型聊天接口（可切换 DeepSeek 或 QWEN）。
-- `utils/redis.js`：Redis 客户端封装，用于数据缓存及验证码存储。
-- `scf_bootstrap`：在 SCF 环境中启动服务的脚本。
+    - `chat.js`：代理大模型聊天接口（可切换 DeepSeek 或 QWEN）。
+`utils/mysql.js`：MySQL 客户端及初始化，用于持久化存储。
+  - `utils/redis.js`：Redis 客户端封装，仅用于验证码等缓存。
+  - `scf_bootstrap`：在 SCF 环境中启动服务的脚本。
 - `.env.example`：环境变量示例文件。
 
 ## 环境准备
@@ -28,7 +29,7 @@
    ```bash
    npm install
    ```
-2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 Redis、COS、Resend、模型名称、OpenAI 密钥、SCF Endpoint、腾讯 OCR 以及 JWT 密钥等：
+2. 复制 `.env.example` 为 `.env`，并根据实际情况填入各项配置，例如 MySQL、Redis、COS、Resend、模型名称、OpenAI 密钥、SCF Endpoint、腾讯 OCR 以及 JWT 密钥等：
    ```bash
   cp .env.example .env
   # 修改 .env 填入真实配置

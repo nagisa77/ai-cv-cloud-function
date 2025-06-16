@@ -17,6 +17,7 @@ curl -X POST http://localhost:9000/auth/captcha/login \
 const express = require('express');
 const router = express.Router();
 const client = require('../utils/redis');
+const pool = require('../utils/mysql');
 const { Resend } = require('resend');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
@@ -156,22 +157,13 @@ router.post('/captcha/login', validateContact, async (req, res) => {
             });
         }
 
-        // 获取或创建用户ID
-        let userId = await new Promise((resolve, reject) => {
-            client.hget('user_contacts', contact, (err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-            });
-        });
+        // 获取或创建用户ID (使用 MySQL 存储)
+        let [rows] = await pool.query('SELECT id FROM users WHERE contact=?', [contact]);
+        let userId = rows.length ? rows[0].id : null;
 
         if (!userId) {
             userId = uuidv4();
-            await new Promise((resolve, reject) => {
-                client.hset('user_contacts', contact, userId, (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
+            await pool.query('INSERT INTO users (id, contact) VALUES (?, ?)', [userId, contact]);
         }
 
         // 生成 JWT Token
@@ -215,38 +207,20 @@ router.post('/google', async (req, res) => {
         const decoded = await admin.auth().verifyIdToken(idToken);
         const { uid, email } = decoded;
 
-        let userId = await new Promise((resolve, reject) => {
-            client.hget('firebase_uid', uid, (err, data) => {
-                if (err) reject(err);
-                else resolve(data);
-            });
-        });
+        let [rows] = await pool.query('SELECT id FROM users WHERE firebase_uid=?', [uid]);
+        let userId = rows.length ? rows[0].id : null;
 
         if (!userId && email) {
-            userId = await new Promise((resolve, reject) => {
-                client.hget('user_contacts', email, (err, data) => {
-                    if (err) reject(err);
-                    else resolve(data);
-                });
-            });
+            [rows] = await pool.query('SELECT id FROM users WHERE contact=?', [email]);
+            if (rows.length) {
+                userId = rows[0].id;
+                await pool.query('UPDATE users SET firebase_uid=? WHERE id=?', [uid, userId]);
+            }
         }
 
         if (!userId) {
             userId = uuidv4();
-        }
-
-        await new Promise((resolve, reject) => {
-            client.hset('firebase_uid', uid, userId, (err) => {
-                if (err) reject(err); else resolve();
-            });
-        });
-
-        if (email) {
-            await new Promise((resolve, reject) => {
-                client.hset('user_contacts', email, userId, (err) => {
-                    if (err) reject(err); else resolve();
-                });
-            });
+            await pool.query('INSERT INTO users (id, contact, firebase_uid) VALUES (?, ?, ?)', [userId, email, uid]);
         }
 
         const token = jwt.sign({ user_id: userId, contact: email }, secretKey, { expiresIn: '7d' });

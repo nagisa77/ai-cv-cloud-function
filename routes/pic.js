@@ -6,7 +6,8 @@ const COS = require('cos-nodejs-sdk-v5');
 const { v4: uuidv4 } = require('uuid');
 const puppeteer = require('puppeteer-core');
 const chromium = require('@sparticuz/chromium');
-const client = require('../utils/redis'); // 用于存储 screenshotUrl
+const client = require('../utils/redis'); // 验证码仍使用 Redis
+const pool = require('../utils/mysql');
 const isProduction = process.env.NODE_ENV === 'production';
 const tencentcloud = require("tencentcloud-sdk-nodejs");
 const OcrClient = tencentcloud.ocr.v20181119.Client;
@@ -294,7 +295,7 @@ async function takeScreenshot(type, id, color, token) {
 }
 
 // ========== 新增：校验简历归属中间件（可选） ==========
-const validateResumeOwnership = (req, res, next) => {
+const validateResumeOwnership = async (req, res, next) => {
     const userId = req.user.user_id;
     const { resumeId } = req.body;
 
@@ -302,21 +303,21 @@ const validateResumeOwnership = (req, res, next) => {
         return res.status(400).json({ code: 40002, message: 'resumeId is required in request body' });
     }
 
-    client.hget(`resume:${resumeId}`, 'userId', (err, storedUserId) => {
-        if (err) {
-            console.error(`[validateResumeOwnership] Redis error: ${err.message}`);
-            return res.status(500).json({ code: 50001, message: 'System error' });
-        }
-        if (!storedUserId) {
+    try {
+        const [rows] = await pool.query('SELECT user_id FROM resumes WHERE id=?', [resumeId]);
+        if (!rows.length) {
             console.warn(`[validateResumeOwnership] Resume not found: ${resumeId}`);
             return res.status(404).json({ code: 40401, message: 'Resume not found' });
         }
-        if (storedUserId !== userId) {
-            console.warn(`[validateResumeOwnership] No permission: user=${userId}, resumeOwner=${storedUserId}`);
+        if (rows[0].user_id !== userId) {
+            console.warn(`[validateResumeOwnership] No permission: user=${userId}, resumeOwner=${rows[0].user_id}`);
             return res.status(403).json({ code: 40301, message: 'No permission' });
         }
         next();
-    });
+    } catch (err) {
+        console.error(`[validateResumeOwnership] DB error: ${err.message}`);
+        res.status(500).json({ code: 50001, message: 'System error' });
+    }
 };
 
 // ========== 新增：SCF 截图路由 ==========
@@ -333,25 +334,16 @@ router.post('/scf-screenshot', validateResumeOwnership, async (req, res) => {
         const screenshotUrls = Array.isArray(screenshotResult) ? screenshotResult : [screenshotResult];
         const firstUrl = screenshotUrls[0];
 
-        // 2. 将截图链接存入 Redis
-        client.hmset(
-            `resume:${resumeId}`,
-            {
-                screenshotUrl: firstUrl,
-                screenshotUrls: JSON.stringify(screenshotUrls)
-            },
-            (err) => {
-                if (err) {
-                    console.error(`[SCF Screenshot] Failed to store screenshot urls: ${err.message}`);
-                    return res.status(500).json({ code: 50014, message: 'Failed to store screenshot url' });
-                }
-                console.log(`[SCF Screenshot] Successfully stored screenshot urls, resumeId=${resumeId}`);
-                return res.json({
-                    code: 20009,
-                    data: { resumeId, screenshotUrls }
-                });
-            }
+        // 2. 将截图链接存入 MySQL
+        await pool.query(
+            'UPDATE resumes SET screenshot_url=?, screenshot_urls=? WHERE id=?',
+            [firstUrl, JSON.stringify(screenshotUrls), resumeId]
         );
+        console.log(`[SCF Screenshot] Successfully stored screenshot urls, resumeId=${resumeId}`);
+        return res.json({
+            code: 20009,
+            data: { resumeId, screenshotUrls }
+        });
     } catch (error) {
         console.error(`[SCF Screenshot] Error: ${error.message}`);
         res.status(500).json({ code: 50015, message: 'Screenshot failed', error: error.message });
